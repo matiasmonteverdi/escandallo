@@ -6,6 +6,9 @@ import { DebugLedgerPage } from './pages/DebugLedgerPage';
 import { RecipesPage } from './pages/RecipesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { normalizeQuantity } from './domain/units';
+import { useAppStore } from './store/useAppStore';
+import { seedDatabase } from './services/db-seed';
+import { Loader2 } from 'lucide-react';
 
 // We keep this exported for any other components that might need it, 
 // though ideally it should be in a service.
@@ -60,7 +63,27 @@ export const calculateDishCost = (dish: any, selectedVariants: Record<string, nu
 };
 
 function App() {
-  const [activePage, setActivePage] = useState<string>('dashboard');
+  const [activePage, setActivePage] = React.useState<string>('dashboard');
+  const { initSync, loading } = useAppStore();
+
+  React.useEffect(() => {
+    // 1. Seed the database with initial data if needed
+    seedDatabase();
+    
+    // 2. Start real-time sync with Firestore
+    const cleanup = initSync();
+    
+    return () => cleanup();
+  }, [initSync]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white space-y-4">
+        <Loader2 className="w-12 h-12 text-cyan-400 animate-spin" />
+        <p className="text-slate-400 font-medium animate-pulse">Cargando Escandallo ERP...</p>
+      </div>
+    );
+  }
 
   return (
     <Layout activePage={activePage} onPageChange={setActivePage}>
