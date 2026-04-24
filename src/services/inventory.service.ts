@@ -13,7 +13,12 @@ export function computeStockProjection(
     : events;
 
   return eventsToProcess.reduce((acc, ev) => {
-    assertValidEvent(ev);
+    try {
+      assertValidEvent(ev);
+    } catch (e: any) {
+      console.warn('Skipping invalid event during projection:', e.message);
+      return acc;
+    }
 
     if (!acc[ev.ingredientId]) {
       // If we don't know the cost, default to 0. It will be updated by the first PURCHASE.
@@ -25,9 +30,11 @@ export function computeStockProjection(
 
     acc[ev.ingredientId].quantity += ev.quantity;
     
-    // Weighted Average Cost (WAC) logic
-    // Only update cost when NEW stock enters (quantity > 0) and it has a defined cost
-    if ((ev.type === 'PURCHASE' || (ev.type === 'ADJUSTMENT' && ev.quantity > 0)) && ev.costPerUnit > 0) {
+    // Cost adjustments and Weighted Average Cost (WAC) logic
+    if (ev.type === 'ADJUSTMENT' && ev.quantity === 0 && ev.costPerUnit > 0) {
+      // Direct cost override for price correction
+      acc[ev.ingredientId].cost = ev.costPerUnit;
+    } else if ((ev.type === 'PURCHASE' || (ev.type === 'ADJUSTMENT' && ev.quantity > 0)) && ev.costPerUnit > 0) {
        if (previousQuantity <= 0) {
            // If stock was 0 or negative, reset the average cost to this new purchase cost
            acc[ev.ingredientId].cost = ev.costPerUnit;

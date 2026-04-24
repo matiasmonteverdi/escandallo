@@ -1,31 +1,57 @@
 import React, { useState } from 'react';
-import { Plus, Edit2, AlertCircle, X, Check } from 'lucide-react';
+import { Plus, Edit2, AlertCircle, X, Check, Ban } from 'lucide-react';
+
 import { useAppStore } from '../store/useAppStore';
-import { generateConsumptionEventsForProduction } from '../services/production.service';
+import { generateProductionResult, validateRecipeAvailability } from '../services/production.service';
 import { computeStockProjection } from '../services/inventory.service';
 import { Production } from '../data';
 import { calculateDishCost } from '../App';
+import { ProductionMode } from '../domain/types';
 
 export const ProductionPage: React.FC = () => {
   const dishes = useAppStore(state => state.dishes);
   const productions = useAppStore(state => state.productions);
-  const setProductions = useAppStore(state => state.setProductions);
+  const addProduction = useAppStore(state => state.addProduction);
+  const catalog = useAppStore(state => state.catalog);
   const inventoryEvents = useAppStore(state => state.inventoryEvents);
   const addInventoryEvent = useAppStore(state => state.addInventoryEvent);
   const inventorySnapshots = useAppStore(state => state.inventorySnapshots);
 
   const latestSnapshot = inventorySnapshots.length > 0 ? inventorySnapshots[inventorySnapshots.length - 1] : null;
   const stockProjection = computeStockProjection(inventoryEvents, latestSnapshot);
+  const stockProjectionByQty = React.useMemo(
+    () => Object.fromEntries(Object.entries(stockProjection).map(([id, data]) => [id, data.quantity])),
+    [stockProjection]
+  );
 
   const [prodDishId, setProdDishId] = useState('');
   const [prodRealQty, setProdRealQty] = useState('');
   const [prodNotes, setProdNotes] = useState('');
   const [prodVariantSelection, setProdVariantSelection] = useState<Record<string, number>>({});
+  const [prodError, setProdError] = useState<string | null>(null);
+  const [productionMode, setProductionMode] = useState<ProductionMode>('real');
 
   const [showProductionForm, setShowProductionForm] = useState(false);
 
+  const selectedDishForProd = dishes.find(d => d.id === prodDishId);
+
+  const preFlight = React.useMemo(() => {
+    if (!selectedDishForProd) return null;
+    const qty = parseFloat(prodRealQty) || selectedDishForProd.portions;
+    return validateRecipeAvailability(
+      selectedDishForProd,
+      qty,
+      dishes,
+      catalog,
+      stockProjectionByQty,
+      prodVariantSelection,
+      productionMode
+    );
+  }, [selectedDishForProd, prodRealQty, dishes, catalog, stockProjectionByQty, prodVariantSelection, productionMode]);
+
   const handleRegisterProduction = (e: React.FormEvent) => {
     e.preventDefault();
+    setProdError(null);
     if (!prodDishId || !prodRealQty) return;
 
     const dish = dishes.find(d => d.id === prodDishId);
@@ -42,6 +68,7 @@ export const ProductionPage: React.FC = () => {
       quantityProduced: producedQty,
       notes: prodNotes,
       variantSelection: prodVariantSelection,
+      mode: productionMode
     };
 
     const idempotencyKey = `prod_${newProdId}`;
@@ -51,25 +78,33 @@ export const ProductionPage: React.FC = () => {
       return;
     }
     
-    const newEvents = generateConsumptionEventsForProduction(newProd, dish, dishes);
+    if (preFlight && !preFlight.canProduce) {
+      setProdError('No se puede producir. Por favor resuelve los errores de ingredientes inactivos listados abajo.');
+      return;
+    }
 
-    newEvents.forEach(ev => addInventoryEvent(ev));
-    setProductions([newProd, ...productions]);
-    
-    setProdDishId('');
-    setProdRealQty('');
-    setProdNotes('');
-    setProdVariantSelection({});
-    setShowProductionForm(false);
+    try {
+      const productionResult = generateProductionResult(newProd, dish, dishes, catalog);
+      productionResult.events.forEach(ev => addInventoryEvent(ev));
+      addProduction(newProd);
+      
+      setProdDishId('');
+      setProdRealQty('');
+      setProdNotes('');
+      setProdVariantSelection({});
+      setProductionMode('real');
+      setProdError(null);
+      setShowProductionForm(false);
+    } catch (err: any) {
+      setProdError(err.message || 'Error al generar consumo.');
+    }
   };
-
-  const selectedDishForProd = dishes.find(d => d.id === prodDishId);
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 md:mb-8 gap-4">
         <div>
-          <h2 className="text-2xl font-serif font-bold text-slate-800">Producción Real</h2>
+          <h2 className="text-2xl font-serif font-bold text-slate-800">Producción</h2>
           <p className="text-slate-500 mt-1">Registra lo que cocinas y compara el coste teórico con el real.</p>
         </div>
         <button 
@@ -114,13 +149,25 @@ export const ProductionPage: React.FC = () => {
                       {new Date(prod.date).toLocaleDateString()}
                     </td>
                     <td className="p-4">
-                      <div className="font-medium text-slate-800">{dish.name}</div>
+                      <div className="font-bold text-slate-800">{dish.name}</div>
+                      {dish.hasInactiveIngredients && (
+                        <div className="flex items-center gap-1 text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-100 font-bold uppercase w-fit mt-1">
+                          <Ban size={10} />
+                          Obsoleto
+                        </div>
+                      )}
+                      {prod.mode === 'theoretical' && (
+                        <div className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 font-bold uppercase w-fit mt-1">
+                          🧪 Simulación
+                        </div>
+                      )}
                       {prod.notes && <div className="text-xs text-slate-500 mt-1 italic">"{prod.notes}"</div>}
                     </td>
                     <td className="p-4 text-center">
                       <div className="font-bold text-slate-800">{prod.quantityProduced}</div>
                       <div className="text-xs text-slate-400">vs {dish.portions} teóricas</div>
                     </td>
+
                     <td className="p-4 text-right text-slate-600">
                       {theoreticalCostPerPortion.toFixed(2)} €/ud
                     </td>
@@ -167,6 +214,11 @@ export const ProductionPage: React.FC = () => {
                 <div>
                   <div className="text-xs text-slate-400 mb-1">{new Date(prod.date).toLocaleDateString()}</div>
                   <h3 className="font-bold text-slate-800 text-lg">{dish.name}</h3>
+                  {prod.mode === 'theoretical' && (
+                    <div className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200 font-bold uppercase w-fit mt-1">
+                      🧪 Simulación
+                    </div>
+                  )}
                   {prod.notes && <p className="text-sm text-slate-500 mt-1 italic">"{prod.notes}"</p>}
                 </div>
                 <span className={`px-2 py-1 rounded-lg text-xs font-bold ${isBad ? 'bg-red-100 text-red-700' : isGood ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-700'}`}>
@@ -223,10 +275,51 @@ export const ProductionPage: React.FC = () => {
                   >
                     <option value="">Seleccionar receta...</option>
                     {dishes.map(d => (
-                      <option key={d.id} value={d.id}>{d.name} ({d.portions} raciones teóricas)</option>
+                      <option key={d.id} value={d.id}>
+                        {d.hasInactiveIngredients ? '🚫 ' : ''}{d.name} ({d.portions} raciones)
+                      </option>
                     ))}
                   </select>
                 </div>
+
+                {prodError && (
+                  <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex items-start gap-3">
+                    <div className="text-red-600 mt-0.5"><AlertCircle size={18} /></div>
+                    <div>
+                      <h4 className="font-bold text-red-800 text-sm">Error de Registro</h4>
+                      <p className="text-xs text-red-600 mt-1">{prodError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {preFlight && preFlight.errors.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex items-start gap-3">
+                    <div className="text-red-600 mt-0.5"><Ban size={18} /></div>
+                    <div>
+                      <h4 className="font-bold text-red-800 text-sm">Escandallo Obsoleto</h4>
+                      <ul className="text-xs text-red-600 mt-1 list-disc pl-4 space-y-1">
+                        {preFlight.errors.map((err, i) => (
+                          <li key={i}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {productionMode === 'real' && preFlight && preFlight.warnings.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
+                    <div className="text-amber-600 mt-0.5"><AlertCircle size={18} /></div>
+                    <div>
+                      <h4 className="font-bold text-amber-800 text-sm">Falta Stock (Warning)</h4>
+                      <ul className="text-xs text-amber-700 mt-1 list-disc pl-4 space-y-1">
+                        {preFlight.warnings.map((warn, i) => (
+                          <li key={i}>{warn}</li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-amber-600 mt-2 font-medium italic">Puedes registrar la producción igual, pero el inventario quedará en negativo.</p>
+                    </div>
+                  </div>
+                )}
 
                 {selectedDishForProd?.variants && selectedDishForProd.variants.length > 0 && (
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3">
@@ -236,20 +329,49 @@ export const ProductionPage: React.FC = () => {
                         <label className="block text-sm font-medium text-slate-600 mb-1">{group.name}</label>
                         <select
                           className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent bg-white"
-                          value={prodVariantSelection[group.name] || 0}
+                          value={prodVariantSelection[group.name] ?? -1}
                           onChange={(e) => setProdVariantSelection({
                             ...prodVariantSelection,
                             [group.name]: parseInt(e.target.value)
                           })}
                         >
-                          {group.options.map((opt, optIdx) => (
-                            <option key={optIdx} value={optIdx}>{opt.name}</option>
-                          ))}
+                          {(() => {
+                            const baseOption = { name: 'Sin variante', quantity: 0, unit: '-' as any, costPerUnit: 0 };
+                            const effectiveOptions = group.options.some(o => o.name === 'Sin variante') 
+                              ? group.options 
+                              : [baseOption, ...group.options];
+                            
+                            return effectiveOptions.map((opt, uiIdx) => {
+                              const dataIdx = group.options.findIndex(o => o.name === opt.name);
+                              return (
+                                <option key={uiIdx} value={dataIdx}>{opt.name}</option>
+                              );
+                            });
+                          })()}
                         </select>
+
+
                       </div>
                     ))}
                   </div>
                 )}
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1">Modo de Producción</label>
+                  <select
+                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent bg-white"
+                    value={productionMode}
+                    onChange={(e) => setProductionMode(e.target.value as ProductionMode)}
+                  >
+                    <option value="real">Producción real (descuenta stock)</option>
+                    <option value="theoretical">Simulación (no afecta inventario)</option>
+                  </select>
+                  {productionMode === 'theoretical' && (
+                    <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                      🧪 Simulación activa: no se descontará stock del inventario.
+                    </div>
+                  )}
+                </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-1">Raciones Reales Obtenidas</label>
@@ -297,11 +419,13 @@ export const ProductionPage: React.FC = () => {
                 <div className="mt-4">
                   <button 
                     type="submit"
-                    className="w-full bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 active:bg-[#0e7490] text-white py-4 rounded-xl font-medium transition-all shadow-lg text-lg flex items-center justify-center gap-2"
+                    disabled={selectedDishForProd?.hasInactiveIngredients}
+                    className="w-full bg-[#06b6d4] hover:bg-[#0891b2] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed active:scale-95 active:bg-[#0e7490] text-white py-4 rounded-xl font-medium transition-all shadow-lg text-lg flex items-center justify-center gap-2"
                   >
                     <Check size={20} />
-                    Registrar Producción
+                    {selectedDishForProd?.hasInactiveIngredients ? 'Producción Bloqueada' : 'Registrar Producción'}
                   </button>
+
                 </div>
               </form>
             </div>

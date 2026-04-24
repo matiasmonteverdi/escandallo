@@ -37,7 +37,12 @@ interface AppState {
   
   setInventorySnapshots: (snapshots: InventorySnapshot[]) => void;
   addInventorySnapshot: (snapshot: InventorySnapshot) => void;
+  
+  deactivateCatalogItem: (id: string) => Promise<void>;
+  activateCatalogItem: (id: string) => Promise<void>;
+  recalculateDishFlags: () => Promise<void>;
 }
+
 
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -110,4 +115,69 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setInventorySnapshots: (inventorySnapshots) => set({ inventorySnapshots }),
   addInventorySnapshot: (snapshot) => set((state) => ({ inventorySnapshots: [...state.inventorySnapshots, snapshot] })),
+
+  deactivateCatalogItem: async (id) => {
+    const { catalog, dishes, recalculateDishFlags } = get();
+    const item = catalog.find(i => i.id === id);
+    if (!item) return;
+
+    const updatedItem = { ...item, active: false, deletedAt: new Date().toISOString() };
+    await firebaseService.saveItem('catalog', updatedItem, catalogConverter);
+    
+    // Immediate UI feedback (Optimistic-ish)
+    set((state) => ({
+      catalog: state.catalog.map(i => i.id === id ? updatedItem : i)
+    }));
+
+    await recalculateDishFlags();
+  },
+
+  activateCatalogItem: async (id) => {
+    const { catalog, recalculateDishFlags } = get();
+    const item = catalog.find(i => i.id === id);
+    if (!item) return;
+
+    const updatedItem = { ...item, active: true };
+    await firebaseService.saveItem('catalog', updatedItem, catalogConverter);
+    
+    // Immediate UI feedback (Optimistic-ish)
+    set((state) => ({
+      catalog: state.catalog.map(i => i.id === id ? updatedItem : i)
+    }));
+
+    await recalculateDishFlags();
+  },
+
+  recalculateDishFlags: async () => {
+    const { catalog, dishes } = get();
+    
+    // Recursive check function
+    const checkInactive = (dish: Dish): boolean => {
+      // Check ingredients
+      const hasInactiveIng = dish.ingredients.some(ing => {
+        const catItem = catalog.find(c => c.id === ing.catalogId);
+        return catItem ? !catItem.active : true; // Missing from catalog = inactive
+      });
+      if (hasInactiveIng) return true;
+
+      // Check sub-recipes recursively
+      if (dish.subRecipes) {
+        for (const sub of dish.subRecipes) {
+          const subDish = dishes.find(d => d.id === sub.dishId);
+          if (subDish && checkInactive(subDish)) return true;
+        }
+      }
+
+      return false;
+    };
+
+    for (const dish of dishes) {
+      const needsUpdate = checkInactive(dish);
+      if (dish.hasInactiveIngredients !== needsUpdate) {
+        const updatedDish = { ...dish, hasInactiveIngredients: needsUpdate };
+        await firebaseService.saveItem('dishes', updatedDish, dishConverter);
+      }
+    }
+  }
 }));
+

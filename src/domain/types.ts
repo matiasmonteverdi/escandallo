@@ -7,3 +7,5 @@ export type InventoryEventType = 'PURCHASE' | 'CONSUMPTION' | 'ADJUSTMENT';
 export type EventSource = 'production' | 'manual' | 'purchase';
 
 export type IndirectCostType = 'fixed' | 'percentage';
+
+export type ProductionMode = 'real' | 'theoretical';

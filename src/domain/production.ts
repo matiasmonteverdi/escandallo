@@ -1,3 +1,5 @@
+import { ProductionMode } from './types';
+
 export interface Production {
   id: string;
   recipeId: string;
@@ -6,4 +8,6 @@ export interface Production {
   quantityProduced: number;
   notes?: string;
   variantSelection?: Record<string, number>;
+  mode?: ProductionMode;
+  isDemoData?: boolean;
 }

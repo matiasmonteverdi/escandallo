@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Plus, Edit2, AlertCircle, X } from 'lucide-react';
+import { Plus, Edit2, AlertCircle, X, Trash2, Ban, History, Archive, RefreshCcw } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+
 import { computeStockProjection } from '../services/inventory.service';
 import { createPurchaseEvent } from '../services/purchase.service';
 import { Unit, BaseUnit } from '../domain/types';
@@ -23,7 +24,16 @@ export const InventoryPage: React.FC = () => {
 
   const [editingStock, setEditingStock] = useState<{name: string, qty: number, unit: BaseUnit, cost: number} | null>(null);
   const [newStockQty, setNewStockQty] = useState('');
+  const [newStockCost, setNewStockCost] = useState('');
   const [adjustmentReason, setAdjustmentReason] = useState('');
+
+  const [activeTab, setActiveTab] = useState<'current' | 'archived'>('current');
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
+  const [reactivateOnPurchase, setReactivateOnPurchase] = useState(true);
+  const deactivateCatalogItem = useAppStore(state => state.deactivateCatalogItem);
+  const activateCatalogItem = useAppStore(state => state.activateCatalogItem);
+
 
   const handleRebuildInventory = () => {
     setInventorySnapshots([]);
@@ -42,8 +52,14 @@ export const InventoryPage: React.FC = () => {
         totalCost: parseFloat(purchaseTotalCost)
       };
       
-      const event = createPurchaseEvent(input);
+      const event = createPurchaseEvent(input, catalog);
       addInventoryEvent(event);
+
+      const selectedCat = catalog.find(c => c.id === purchaseIngredient);
+      if (selectedCat && !selectedCat.active && reactivateOnPurchase) {
+        activateCatalogItem(purchaseIngredient);
+      }
+
 
       setShowPurchaseForm(false);
       setPurchaseIngredient('');
@@ -57,23 +73,25 @@ export const InventoryPage: React.FC = () => {
 
   const handleAdjustStock = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingStock || !newStockQty || !adjustmentReason) return;
+    if (!editingStock || !newStockQty || !newStockCost || !adjustmentReason) return;
 
     const newQty = parseFloat(newStockQty);
-    const diff = newQty - editingStock.qty;
+    const diffQty = newQty - editingStock.qty;
+    const newCost = parseFloat(newStockCost);
+    const diffCost = newCost - editingStock.cost;
 
-    if (diff === 0) {
+    if (diffQty === 0 && diffCost === 0) {
       setEditingStock(null);
       return;
     }
 
     const event = {
       id: `ev_adj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      type: diff > 0 ? 'PURCHASE' : 'CONSUMPTION',
+      type: 'ADJUSTMENT',
       ingredientId: editingStock.name,
-      quantity: Math.abs(diff),
+      quantity: diffQty,
       unit: editingStock.unit,
-      costPerUnit: editingStock.cost,
+      costPerUnit: newCost > 0 ? newCost : editingStock.cost,
       timestamp: new Date().toISOString(),
       source: 'MANUAL_ADJUSTMENT',
       causality: adjustmentReason
@@ -82,36 +100,75 @@ export const InventoryPage: React.FC = () => {
     addInventoryEvent(event);
     setEditingStock(null);
     setNewStockQty('');
+    setNewStockCost('');
     setAdjustmentReason('');
   };
 
   const latestSnapshot = inventorySnapshots.length > 0 ? inventorySnapshots[inventorySnapshots.length - 1] : null;
   const stockProjection = computeStockProjection(inventoryEvents, latestSnapshot);
-  const visibleStock = Object.entries(stockProjection).filter(([_, data]) => Math.abs(data.quantity) > 0.001);
+  
+  const activeItems = catalog.filter(c => c.active);
+  const archivedItems = catalog.filter(c => !c.active);
+
+  // For current stock, we also want to show items that have stock but were deactivated (edge case)
+  // But per user request, we usually hide them unless we are in the archived view.
+  const visibleItems = activeTab === 'current' 
+    ? activeItems.map(item => ({ item, stock: stockProjection[item.id] || { quantity: 0, unit: item.defaultUnit, cost: item.baseCost } }))
+    : archivedItems.map(item => ({ item, stock: stockProjection[item.id] || { quantity: 0, unit: item.defaultUnit, cost: item.baseCost } }));
+
+  const dishesAffectedBy = (catalogId: string) => {
+    return dishes.filter(d => d.ingredients.some(ing => ing.catalogId === catalogId));
+  };
+
+  const handleDeactivate = async () => {
+    if (!deactivatingId) return;
+    setIsDeactivating(true);
+    try {
+      await deactivateCatalogItem(deactivatingId);
+      setDeactivatingId(null);
+    } catch (error) {
+      alert('Error al desactivar: ' + error);
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto w-full pb-24">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 gap-4">
         <div>
-          <h2 className="text-2xl font-serif font-bold text-slate-800">Inventario (Proyección)</h2>
-          <p className="text-slate-500 mt-1">Stock calculado en tiempo real basado en el Registro Contable.</p>
+          <h2 className="text-2xl font-serif font-bold text-slate-800">Inventario Proyectado</h2>
+          <p className="text-slate-500 mt-1">Stock calculado desde el Ledger (Inmutable).</p>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
           <button 
-            onClick={handleRebuildInventory}
-            className="flex-1 md:flex-none bg-slate-100 hover:bg-slate-200 active:scale-95 active:bg-slate-300 text-slate-700 px-4 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-3"
-          >
-            Reconstruir
-          </button>
-          <button 
             onClick={() => setShowPurchaseForm(true)}
-            className="flex-1 md:flex-none bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 active:bg-[#0e7490] text-white px-4 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-3 shadow-md"
+            className="flex-1 md:flex-none bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 active:bg-[#0e7490] text-white px-4 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-3 shadow-md border-b-2 border-[#0e7490]/30"
           >
             <Plus size={18} />
-            Entrada
+            Entrada de Compra
           </button>
         </div>
       </div>
+
+      <div className="flex gap-4 mb-6 border-b border-slate-200">
+        <button 
+          onClick={() => setActiveTab('current')}
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition-all border-b-2 ${activeTab === 'current' ? 'border-[#06b6d4] text-[#06b6d4]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >
+          <History size={18} />
+          Stock Activo
+        </button>
+        <button 
+          onClick={() => setActiveTab('archived')}
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition-all border-b-2 ${activeTab === 'archived' ? 'border-[#06b6d4] text-[#06b6d4]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >
+          <Archive size={18} />
+          Archivo (Obsoletos)
+        </button>
+      </div>
+
 
       {/* Desktop Table */}
       <div className="hidden md:block bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -128,14 +185,15 @@ export const InventoryPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visibleStock.map(([catId, data]) => {
+              {visibleItems.map(({ item, stock: data }) => {
                 const displayQty = formatQuantityForDisplay(data.quantity, data.unit as BaseUnit);
                 const displayCost = formatCostForDisplay(data.cost, data.unit as BaseUnit);
-                const catItem = catalog.find(c => c.id === catId);
-                const displayName = catItem?.name || catId;
                 return (
-                <tr key={catId} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4 font-medium text-slate-800">{displayName}</td>
+                <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4">
+                    <div className="font-medium text-slate-800">{item.name}</div>
+                    <div className="text-[10px] text-slate-400 font-mono uppercase mt-0.5">{item.id}</div>
+                  </td>
                   <td className={`p-4 ${data.quantity < 0 ? 'text-red-500' : 'text-slate-800'}`}>
                     <div className="font-bold text-base">{formatNumber(displayQty.value)}</div>
                     {displayQty.unit !== displayQty.baseUnit && (
@@ -153,22 +211,49 @@ export const InventoryPage: React.FC = () => {
                     {formatNumber(data.quantity * data.cost)} €
                   </td>
                   <td className="p-4">
-                    <button 
-                      onClick={() => setEditingStock({name: catId, qty: data.quantity, unit: data.unit as BaseUnit, cost: data.cost})}
-                      className="text-[#06b6d4] hover:text-[#0891b2] active:scale-95 transition-transform p-2 -ml-2 rounded-lg hover:bg-[#06b6d4]/10"
-                    >
-                      <Edit2 size={18} />
-                    </button>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => {
+                          setEditingStock({name: item.id, qty: data.quantity, unit: data.unit as BaseUnit, cost: data.cost});
+                          setNewStockCost(data.cost.toString());
+                        }}
+                        className="text-[#06b6d4] hover:bg-[#06b6d4]/10 p-2 rounded-lg transition-all"
+                        title="Ajustar Stock"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      {item.active ? (
+                        <button 
+                          onClick={() => setDeactivatingId(item.id)}
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
+                          title="Desactivar / Obsoleto"
+                        >
+                          <Ban size={18} />
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => activateCatalogItem(item.id)}
+                          className="text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 p-2 rounded-lg transition-all"
+                          title="Restaurar / Activar"
+                        >
+                          <RefreshCcw size={18} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )})}
-              {visibleStock.length === 0 && (
+              {visibleItems.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500">
-                    No hay inventario registrado. Registra una compra para empezar.
+                  <td colSpan={6} className="p-12 text-center">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <Archive size={40} className="opacity-20 mb-2" />
+                      <p>No hay productos en esta vista.</p>
+                    </div>
                   </td>
                 </tr>
               )}
+
             </tbody>
           </table>
         </div>
@@ -176,28 +261,48 @@ export const InventoryPage: React.FC = () => {
 
       {/* Mobile Cards */}
       <div className="md:hidden flex flex-col gap-3">
-        {visibleStock.map(([catId, data]) => {
+        {visibleItems.map(({ item, stock: data }) => {
           const displayQty = formatQuantityForDisplay(data.quantity, data.unit as BaseUnit);
           const displayCost = formatCostForDisplay(data.cost, data.unit as BaseUnit);
-          const catItem = catalog.find(c => c.id === catId);
-          const displayName = catItem?.name || catId;
           return (
-            <div key={catId} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-3 relative">
+            <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-3 relative">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="font-bold text-slate-800 text-lg">{displayName}</h3>
+                  <h3 className="font-bold text-slate-800 text-lg">{item.name}</h3>
                   <div className="text-sm text-slate-500 mt-1 flex items-center gap-2">
                     <span>{formatNumber(displayCost.value, 4)} €/{displayCost.unit}</span>
                     <span className="w-1 h-1 rounded-full bg-slate-300"></span>
                     <span className="font-medium text-slate-700">Total: {formatNumber(data.quantity * data.cost)} €</span>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setEditingStock({name: catId, qty: data.quantity, unit: data.unit as BaseUnit, cost: data.cost})}
-                  className="text-[#06b6d4] bg-[#06b6d4]/10 hover:bg-[#06b6d4]/20 active:scale-95 transition-transform p-3 rounded-lg flex items-center justify-center"
-                >
-                  <Edit2 size={20} />
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                      setEditingStock({name: item.id, qty: data.quantity, unit: data.unit as BaseUnit, cost: data.cost});
+                      setNewStockCost(data.cost.toString());
+                    }}
+                    className="text-[#06b6d4] bg-[#06b6d4]/10 hover:bg-[#06b6d4]/20 active:scale-95 transition-transform p-3 rounded-lg flex items-center justify-center"
+                  >
+                    <Edit2 size={20} />
+                  </button>
+                  {item.active ? (
+                    <button 
+                      onClick={() => setDeactivatingId(item.id)}
+                      className="text-red-400 bg-red-50 hover:bg-red-100 active:scale-95 transition-transform p-3 rounded-lg flex items-center justify-center"
+                      title="Desactivar / Obsoleto"
+                    >
+                      <Ban size={20} />
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => activateCatalogItem(item.id)}
+                      className="text-emerald-500 bg-emerald-50 hover:bg-emerald-100 active:scale-95 transition-transform p-3 rounded-lg flex items-center justify-center"
+                      title="Restaurar / Activar"
+                    >
+                      <RefreshCcw size={20} />
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="bg-slate-50 p-3 rounded-lg flex justify-between items-center border border-slate-100">
                 <span className="text-sm text-slate-500 font-medium">Stock Actual</span>
@@ -209,12 +314,14 @@ export const InventoryPage: React.FC = () => {
             </div>
           );
         })}
-        {visibleStock.length === 0 && (
-          <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 text-center text-slate-500">
-            No hay inventario registrado. Registra una compra para empezar.
+        {visibleItems.length === 0 && (
+          <div className="bg-white p-12 rounded-xl shadow-sm border border-slate-200 text-center text-slate-400">
+             <Archive size={40} className="mx-auto opacity-20 mb-2" />
+             <p>No hay productos en esta vista.</p>
           </div>
         )}
       </div>
+
 
       {/* Bottom Sheet: Registrar Compra */}
       {showPurchaseForm && (
@@ -240,12 +347,39 @@ export const InventoryPage: React.FC = () => {
                     required
                   >
                     <option value="">Seleccionar ingrediente...</option>
-                    {catalog.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    {[...catalog].sort((a,b) => Number(b.active) - Number(a.active)).map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name} {!cat.active ? '(Obsoleto)' : ''}</option>
                     ))}
+
                   </select>
                 </div>
                 
+                {(() => {
+                  const sel = catalog.find(c => c.id === purchaseIngredient);
+                  if (sel && !sel.active) {
+                    return (
+                      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl shadow-sm">
+                        <h4 className="font-bold text-amber-800 text-sm mb-3 flex items-center gap-2">
+                          <AlertCircle size={18} className="text-amber-600" /> Ingrediente archivado
+                        </h4>
+                        <label className="flex items-start gap-3 text-sm text-amber-900 cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            className="w-5 h-5 mt-0.5 text-[#06b6d4] focus:ring-[#06b6d4] rounded"
+                            checked={reactivateOnPurchase}
+                            onChange={(e) => setReactivateOnPurchase(e.target.checked)}
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-medium">Reactivar automáticamente</span>
+                            <span className="text-xs text-amber-700/80 mt-0.5">Al guardar la compra, el insumo volverá a estar disponible para la elaboración de producciones.</span>
+                          </div>
+                        </label>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 <div className="flex gap-4">
                   <div className="flex-1">
                     <label className="block text-sm font-medium text-slate-600 mb-1">Cantidad</label>
@@ -339,33 +473,37 @@ export const InventoryPage: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-1">Nueva Cantidad Real ({editingStock.unit})</label>
                   <input 
-                    type="number" inputMode="decimal" 
-                    min="0" 
-                    step="any" 
-                    required
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent text-lg font-bold"
+                    type="number" inputMode="decimal" step="any" required
+                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                    placeholder="Ej. 1500"
                     value={newStockQty}
                     onChange={(e) => setNewStockQty(e.target.value)}
-                    placeholder="Ej. 1500"
                   />
+                  <div className="flex gap-2 mt-3">
+                    {[ -100, -10, 10, 100 ].map(step => (
+                      <button 
+                        key={step} type="button"
+                        onClick={() => {
+                          const current = parseFloat(newStockQty) || editingStock.qty;
+                          setNewStockQty(Math.max(0, current + step).toString());
+                        }}
+                        className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors ${step > 0 ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
+                      >
+                        {step > 0 ? '+' : ''}{step}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Quick Incrementors/Decrementors */}
-                <div className="grid grid-cols-4 gap-2">
-                  {[-100, -10, 10, 100].map(val => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => {
-                        const current = parseFloat(newStockQty) || editingStock.qty;
-                        const next = Math.max(0, current + val);
-                        setNewStockQty(next.toString());
-                      }}
-                      className={`py-2 rounded-lg text-sm font-medium transition-all active:scale-95 ${val > 0 ? 'bg-green-50 text-green-700 hover:bg-green-100 active:bg-green-200' : 'bg-red-50 text-red-700 hover:bg-red-100 active:bg-red-200'}`}
-                    >
-                      {val > 0 ? '+' : ''}{val}
-                    </button>
-                  ))}
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1">Nuevo Coste U. (€/{editingStock.unit})</label>
+                  <input 
+                    type="number" inputMode="decimal" step="any" min="0" required
+                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                    placeholder="Ej. 24.50"
+                    value={newStockCost}
+                    onChange={(e) => setNewStockCost(e.target.value)}
+                  />
                 </div>
 
                 <div>
@@ -399,6 +537,58 @@ export const InventoryPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal: Confirmación de Desactivación */}
+      {deactivatingId && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 transition-opacity">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4 mx-auto">
+                <AlertCircle size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 text-center mb-2">¿Desactivar Ingrediente?</h3>
+              <p className="text-slate-500 text-center mb-6">
+                Este ingrediente dejará de estar disponible para compras y producción. <br/>
+                <span className="font-medium text-slate-700">El historial contable se conservará intacto.</span>
+              </p>
+
+              {dishesAffectedBy(deactivatingId).length > 0 && (
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-6">
+                  <h4 className="text-amber-800 font-bold text-sm mb-2 flex items-center gap-2">
+                    <Trash2 size={14} />
+                    Escandallos afectados:
+                  </h4>
+                  <ul className="text-sm text-amber-700 space-y-1 list-disc list-inside">
+                    {dishesAffectedBy(deactivatingId).map(d => (
+                      <li key={d.id}>{d.name}</li>
+                    ))}
+                  </ul>
+                  <p className="text-[11px] text-amber-600 mt-2 italic">
+                    * Estos escandallos quedarán marcados como 'OBSOLETOS'.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={handleDeactivate}
+                  disabled={isDeactivating}
+                  className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white py-3 rounded-xl font-medium transition-all shadow-md flex items-center justify-center gap-2"
+                >
+                  {isDeactivating ? 'Desactivando...' : 'Confirmar Desactivación'}
+                </button>
+                <button 
+                  onClick={() => setDeactivatingId(null)}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-medium transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 };

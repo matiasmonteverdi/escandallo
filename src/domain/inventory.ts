@@ -14,6 +14,7 @@ export interface InventoryEvent {
   batchId?: string; // For atomic transactions
   idempotencyKey?: string; // To prevent duplicate events
   causality?: string; // Human readable reason (e.g., "Producido: Empanada x8")
+  isDemoData?: boolean;
 }
 
 export interface InventorySnapshot {

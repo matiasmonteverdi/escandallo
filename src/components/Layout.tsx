@@ -28,16 +28,17 @@ export function Layout({ children, activePage, onPageChange }: LayoutProps) {
     { id: 'production', icon: ClipboardList, label: 'Producción' },
     { id: 'inventory', icon: Package, label: 'Inventario' },
     { id: 'debug', icon: Terminal, label: 'Registro Contable' },
-    { id: 'settings', icon: Settings, label: 'Configuración' },
+    { id: 'config', icon: Settings, label: 'Configuración' },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800">
       {/* Sidebar (Desktop) */}
       <aside className="w-64 bg-[#1e293b] text-slate-300 flex-col hidden md:flex shrink-0">
-        <div className="p-6">
-          <h1 className="text-white font-serif text-2xl font-bold tracking-wider">
-            HORECA<span className="text-[#06b6d4]">OS</span>
+        <div className="p-6 flex items-center gap-3">
+          <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain rounded-lg shadow-lg border border-slate-700" />
+          <h1 className="text-white font-serif text-xl font-bold tracking-wider leading-tight">
+            ESCANDALLO<br /><span className="text-[#06b6d4]">PANA</span>
           </h1>
         </div>
         <nav className="flex-1 px-4 space-y-2">
@@ -75,11 +76,14 @@ export function Layout({ children, activePage, onPageChange }: LayoutProps) {
       )}
 
       {/* Sidebar (Mobile) */}
-      <aside className={`fixed inset-y-0 left-0 w-64 bg-[#1e293b] text-slate-300 flex flex-col z-50 transform transition-transform duration-300 md:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-6 flex justify-between items-center">
-          <h1 className="text-white font-serif text-2xl font-bold tracking-wider">
-            HORECA<span className="text-[#06b6d4]">OS</span>
-          </h1>
+      <aside className={`fixed inset-y-0 left-0 w-64 bg-[#1e293b] text-slate-300 flex flex-col z-50 transform transition-transform duration-300 md:hidden overflow-hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-6 flex justify-between items-center bg-slate-900/50">
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain rounded shadow-md border border-slate-700" />
+            <h1 className="text-white font-serif text-lg font-bold tracking-wider">
+              ESCANDALLO<span className="text-[#06b6d4]">PANA</span>
+            </h1>
+          </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="text-slate-400 hover:text-white">
             <X size={24} />
           </button>

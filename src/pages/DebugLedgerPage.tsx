@@ -1,6 +1,8 @@
 import React from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { ArrowDownRight, ArrowUpRight, RefreshCw } from 'lucide-react';
+import { formatQuantityForDisplay, formatNumber } from '../domain/units';
+import { BaseUnit } from '../domain/types';
 
 export const DebugLedgerPage: React.FC = () => {
   const catalog = useAppStore(state => state.catalog);
@@ -34,6 +36,8 @@ export const DebugLedgerPage: React.FC = () => {
               {[...inventoryEvents].reverse().map(ev => {
                 const catItem = catalog.find(c => c.id === ev.ingredientId);
                 const displayName = catItem?.name || ev.ingredientId;
+                const displayQty = formatQuantityForDisplay(Math.abs(ev.quantity), ev.unit as BaseUnit);
+
                 return (
                 <tr key={ev.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4 text-sm text-slate-500">
@@ -53,7 +57,7 @@ export const DebugLedgerPage: React.FC = () => {
                   </td>
                   <td className="p-4 font-medium text-slate-800">{displayName}</td>
                   <td className={`p-4 text-right font-bold ${ev.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {ev.quantity > 0 ? '+' : ''}{ev.quantity.toFixed(2)} <span className="text-sm font-normal text-slate-500">{ev.unit}</span>
+                    {ev.quantity > 0 ? '+' : (ev.quantity < 0 ? '-' : '')}{formatNumber(displayQty.value)} <span className="text-sm font-normal text-slate-500">{displayQty.unit}</span>
                   </td>
                   <td className="p-4">
                     <div className="text-sm text-slate-700">{ev.source === 'manual' ? 'Manual' : 'Producción'}</div>
@@ -83,6 +87,8 @@ export const DebugLedgerPage: React.FC = () => {
         {[...inventoryEvents].reverse().map(ev => {
           const catItem = catalog.find(c => c.id === ev.ingredientId);
           const displayName = catItem?.name || ev.ingredientId;
+          const displayQty = formatQuantityForDisplay(Math.abs(ev.quantity), ev.unit as BaseUnit);
+
           return (
           <div key={ev.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-3">
             <div className="flex justify-between items-start">
@@ -102,8 +108,8 @@ export const DebugLedgerPage: React.FC = () => {
                 </div>
               </div>
               <div className={`text-right font-bold text-lg ${ev.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {ev.quantity > 0 ? '+' : ''}{ev.quantity.toFixed(2)}
-                <span className="text-sm font-normal ml-1">{ev.unit}</span>
+                {ev.quantity > 0 ? '+' : (ev.quantity < 0 ? '-' : '')}{formatNumber(displayQty.value)}
+                <span className="text-sm font-normal ml-1">{displayQty.unit}</span>
               </div>
             </div>
             

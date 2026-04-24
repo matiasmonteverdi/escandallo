@@ -1,9 +1,17 @@
 import { PurchaseInput } from '../domain/purchase';
 import { InventoryEvent } from '../domain/inventory';
+import { CatalogItem } from '../data';
 import { normalizeQuantity } from '../domain/units';
 
-export function createPurchaseEvent(input: PurchaseInput): InventoryEvent {
+
+export function createPurchaseEvent(input: PurchaseInput, catalog: CatalogItem[]): InventoryEvent {
+  const catalogItem = catalog.find(i => i.id === input.ingredientId);
+  if (!catalogItem || !catalogItem.active) {
+    throw new Error(`No se puede comprar el ingrediente ${catalogItem?.name || input.ingredientId} porque está desactivado u obsoleto.`);
+  }
+
   // 1. Normalize quantity to BaseUnit (e.g., 2kg -> 2000g)
+
   const { quantity: normalizedQty, unit: baseUnit } = normalizeQuantity(input.quantity, input.unit);
   
   if (normalizedQty <= 0) {

@@ -8,7 +8,11 @@ export type CatalogItem = {
   name: string; // "Harina de trigo", "Limón"
   defaultUnit: Unit;
   baseCost: number; // Coste de referencia
+  active: boolean; // Mandatory for ERP consistency
+  deletedAt?: string;
+  isDemoData?: boolean;
 };
+
 
 // INGREDIENTE EN ESCANDALLO
 export type Ingredient = {
@@ -16,6 +20,8 @@ export type Ingredient = {
   quantity: number;
   unit: Unit;
   costPerUnit: number; // Coste teórico estático usado para referencias
+  priceSource?: 'inventory' | 'manual';
+  consumeStock?: boolean;
   wastePercentage?: number;
   purchasePrice?: number;
   purchaseQuantity?: number;
@@ -58,22 +64,37 @@ export type Dish = {
   subRecipes?: SubRecipeUsage[];
   variants?: VariantGroup[];
   indirectCosts?: IndirectCost[];
+  defaultConsumeStock?: boolean;
+  hasInactiveIngredients?: boolean; // Optimization flag
+  instructions?: string;
+  notes?: string;
+  allergens?: Record<string, boolean>; // 14 EU Allergens
+  version?: string;
+  lastUpdated?: string;
+  isDemoData?: boolean;
 };
+
+export const ALLERGENS_LIST = [
+  'Gluten', 'Crustáceos', 'Huevos', 'Pescado', 'Cacahuetes', 'Soja', 'Lácteos', 
+  'Frutos secos', 'Apio', 'Mostaza', 'Sésamo', 'Sulfitos', 'Altramuces', 'Moluscos'
+] as const;
+
 
 export { type InventoryEvent, type InventorySnapshot, type Production };
 
 // ---- DATOS INICALES MOCKEADOS CON UUIDS ---- //
 
 export const CATALOG: CatalogItem[] = [
-  { id: 'cat_harina', name: 'Harina de trigo', defaultUnit: 'kg', baseCost: 1.20 },
-  { id: 'cat_mantequilla', name: 'Mantequilla', defaultUnit: 'kg', baseCost: 8.00 },
-  { id: 'cat_agua', name: 'Agua', defaultUnit: 'l', baseCost: 0.10 },
-  { id: 'cat_sal', name: 'Sal', defaultUnit: 'kg', baseCost: 0.50 },
-  { id: 'cat_huevo', name: 'Huevo (M)', defaultUnit: 'ud', baseCost: 0.25 },
-  { id: 'cat_carne_picada', name: 'Carne Picada', defaultUnit: 'kg', baseCost: 9.00 },
-  { id: 'cat_atun', name: 'Atún en lata', defaultUnit: 'kg', baseCost: 15.00 },
-  { id: 'cat_espinacas', name: 'Espinacas frescas', defaultUnit: 'kg', baseCost: 11.00 },
+  { id: 'cat_harina', name: 'Harina de trigo', defaultUnit: 'kg', baseCost: 1.20, active: true },
+  { id: 'cat_mantequilla', name: 'Mantequilla', defaultUnit: 'kg', baseCost: 8.00, active: true },
+  { id: 'cat_agua', name: 'Agua', defaultUnit: 'l', baseCost: 0.10, active: true },
+  { id: 'cat_sal', name: 'Sal', defaultUnit: 'kg', baseCost: 0.50, active: true },
+  { id: 'cat_huevo', name: 'Huevo (M)', defaultUnit: 'ud', baseCost: 0.25, active: true },
+  { id: 'cat_carne_picada', name: 'Carne Picada', defaultUnit: 'kg', baseCost: 9.00, active: true },
+  { id: 'cat_atun', name: 'Atún en lata', defaultUnit: 'kg', baseCost: 15.00, active: true },
+  { id: 'cat_espinacas', name: 'Espinacas frescas', defaultUnit: 'kg', baseCost: 11.00, active: true },
 ];
+
 
 export const TRADITIONAL_DISHES: Dish[] = [
   {
@@ -99,6 +120,10 @@ export const TRADITIONAL_DISHES: Dish[] = [
     ],
     indirectCosts: [
       { name: 'Packaging (Caja)', type: 'fixed', value: 0.50 }
-    ]
+    ],
+    version: '1.0.0',
+    lastUpdated: new Date().toISOString(),
+    instructions: '1. Preparar la masa con harina y mantequilla.\n2. Dejar reposar.\n3. Rellenar y hornear a 180ºC durante 45 min.',
+    allergens: { 'Gluten': true, 'Huevos': true, 'Lácteos': true }
   }
 ];

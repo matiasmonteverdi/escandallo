@@ -1,10 +1,121 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ChefHat, ArrowLeft, Download, TrendingUp, PieChart, DollarSign, Plus, Trash2, Layers, Calculator, Edit, Info } from 'lucide-react';
 import { Dish, Ingredient, IndirectCost, SubRecipeUsage, VariantGroup, VariantOption } from '../data';
 import { useAppStore } from '../store/useAppStore';
 import { calculateDishCost } from '../App';
 import { convertUnit, normalizeQuantity } from '../domain/units';
 import { computeStockProjection } from '../services/inventory.service';
+import { PDFViewer, PDFDownloadLink, pdf } from '@react-pdf/renderer';
+import RecipePDF from '../components/RecipePDF';
+import { mapRecipeToPDFModel, PDFModel } from '../services/pdfAdapter.service';
+import { X, ExternalLink, Eye, EyeOff, Printer, Loader2 } from 'lucide-react';
+import { resolveIngredientCost } from '../services/pricing.service';
+import { getScaledDishBreakdown } from '../services/breakdown.service';
+
+// --- HELPERS & SUBCOMPONENTS ---
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const listener = () => setMatches(media.matches);
+    
+    // Modern browsers use addEventListener
+    if (media.addEventListener) {
+      media.addEventListener('change', listener);
+    } else {
+      // Fallback for older browsers
+      (media as any).addListener(listener);
+    }
+
+    return () => {
+      if (media.removeEventListener) {
+        media.removeEventListener('change', listener);
+      } else {
+        (media as any).removeListener(listener);
+      }
+    };
+  }, [query]);
+
+  return matches;
+}
+
+interface MobilePDFFallbackProps {
+  document: React.ReactElement;
+  fileName: string;
+}
+
+const MobilePDFFallback: React.FC<MobilePDFFallbackProps> = ({ document, fileName }) => {
+  const [generating, setGenerating] = useState(false);
+
+  const handleAction = async (action: 'open' | 'download') => {
+    try {
+      setGenerating(true);
+      const blob = await pdf(document).toBlob();
+      const url = URL.createObjectURL(blob);
+
+      if (action === 'open') {
+        window.open(url, '_blank');
+      } else {
+        const link = window.document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      alert('Error al generar el PDF. Por favor, inténtalo de nuevo.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="p-8 text-center flex flex-col items-center gap-6 max-w-sm mx-auto">
+      <div className="w-20 h-20 bg-[#06b6d4]/10 rounded-full flex items-center justify-center text-[#06b6d4]">
+        <Printer size={40} />
+      </div>
+      <div>
+        <h3 className="text-white font-bold text-lg mb-2">Ficha lista para procesar</h3>
+        <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+          Para garantizar la mejor calidad en dispositivos móviles, abre el documento en una pestaña dedicada o descárgalo directamente.
+        </p>
+        <div className="flex flex-col gap-3 w-full">
+          <button
+            onClick={() => handleAction('open')}
+            disabled={generating}
+            className="w-full bg-[#06b6d4] hover:bg-[#0891b2] disabled:opacity-50 text-white py-4 rounded-xl font-bold transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3"
+          >
+            {generating ? (
+              <Loader2 className="animate-spin" size={20} />
+            ) : (
+              <ExternalLink size={20} />
+            )}
+            VER FICHA COMPLETA
+          </button>
+          
+          <button
+            onClick={() => handleAction('download')}
+            disabled={generating}
+            className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-3"
+          >
+            {generating ? (
+              <Loader2 className="animate-spin" size={20} />
+            ) : (
+              <Download size={20} />
+            )}
+            DESCARGAR PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const RecipesPage: React.FC = () => {
   const activeTab = useAppStore(state => state.activeTab);
@@ -15,6 +126,9 @@ export const RecipesPage: React.FC = () => {
   const selectedDish = useAppStore(state => state.selectedDish);
   const setSelectedDish = useAppStore(state => state.setSelectedDish);
   const setDishes = useAppStore(state => state.setDishes);
+  const addDish = useAppStore(state => state.addDish);
+  const updateDish = useAppStore(state => state.updateDish);
+  const deleteDish = useAppStore(state => state.deleteDish);
 
   const inventoryEvents = useAppStore(state => state.inventoryEvents);
   const inventorySnapshots = useAppStore(state => state.inventorySnapshots);
@@ -22,8 +136,9 @@ export const RecipesPage: React.FC = () => {
   const setCatalog = useAppStore(state => state.setCatalog);
   const latestSnapshot = inventorySnapshots.length > 0 ? inventorySnapshots[inventorySnapshots.length - 1] : null;
   const stockProjection = computeStockProjection(inventoryEvents, latestSnapshot);
-
   const [marginPercent, setMarginPercent] = useState<number>(43);
+
+  const hasFloatingFooter = false; // TODO: activar cuando añadamos acciones sticky (Save/CTA)
 
   // Custom dish form state
   const [editingDishId, setEditingDishId] = useState<string | null>(null);
@@ -32,7 +147,8 @@ export const RecipesPage: React.FC = () => {
 
   // Custom ingredient form state
   const [customIngredients, setCustomIngredients] = useState<Ingredient[]>([]);
-  const [newName, setNewName] = useState('');
+  const [ingredientSearch, setIngredientSearch] = useState('');
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(null);
   
   // Recipe Usage
   const [newQuantity, setNewQuantity] = useState('');
@@ -43,6 +159,23 @@ export const RecipesPage: React.FC = () => {
   const [newPurchasePrice, setNewPurchasePrice] = useState('');
   const [newPurchaseQuantity, setNewPurchaseQuantity] = useState('1');
   const [newPurchaseUnit, setNewPurchaseUnit] = useState('kg');
+  const [useInventoryPrice, setUseInventoryPrice] = useState(true);
+  const [consumeStock, setConsumeStock] = useState(true);
+  const normalizedIngredientSearch = ingredientSearch.trim().toLowerCase();
+  const filteredCatalogItems = React.useMemo(() => {
+    if (!normalizedIngredientSearch) return [];
+    return catalog
+      .filter(c => c.active && c.name.toLowerCase().includes(normalizedIngredientSearch))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 8);
+  }, [catalog, normalizedIngredientSearch]);
+  const selectedCatalogItem = React.useMemo(
+    () => (selectedCatalogId ? catalog.find(c => c.id === selectedCatalogId) || null : null),
+    [catalog, selectedCatalogId]
+  );
+  const isFromCatalog = !!selectedCatalogItem;
+  const hasInventoryWac = !!(selectedCatalogItem && stockProjection[selectedCatalogItem.id]?.cost);
+  const priceLocked = isFromCatalog && useInventoryPrice && hasInventoryWac;
 
   // Custom subrecipe form state
   const [customSubRecipes, setCustomSubRecipes] = useState<SubRecipeUsage[]>([]);
@@ -66,9 +199,70 @@ export const RecipesPage: React.FC = () => {
   const [newIcName, setNewIcName] = useState('');
   const [newIcType, setNewIcType] = useState<'fixed' | 'percentage'>('percentage');
   const [newIcValue, setNewIcValue] = useState('');
+  
+  // Operational fields
+  const [instructions, setInstructions] = useState('');
+  const [notes, setNotes] = useState('');
+  const [dishAllergens, setDishAllergens] = useState<Record<string, boolean>>({});
+  const [dishVersion, setDishVersion] = useState('1.0.0');
 
   // Delete confirmation state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // PDF Preview State
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [pdfData, setPdfData] = useState<PDFModel | null>(null);
+  const [pdfViewMode, setPdfViewMode] = useState<'kitchen' | 'manager'>('kitchen');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [showInventoryPicker, setShowInventoryPicker] = useState(false);
+  const [expandedSubRecipeIdx, setExpandedSubRecipeIdx] = useState<number | null>(null);
+  const [variantGroupError, setVariantGroupError] = useState(false);
+  const variantGroupInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Layout detection (Adaptive Rendering)
+  const isCompact = useMediaQuery('(max-width: 768px)');
+
+  React.useEffect(() => {
+    if (!normalizedIngredientSearch) {
+      setSelectedCatalogId(null);
+      return;
+    }
+
+    const exactMatch = catalog.find(c => c.active && c.name.trim().toLowerCase() === normalizedIngredientSearch);
+    if (exactMatch) {
+      setSelectedCatalogId(exactMatch.id);
+      setIngredientSearch(exactMatch.name);
+    } else if (selectedCatalogItem && selectedCatalogItem.name.trim().toLowerCase() !== normalizedIngredientSearch) {
+      setSelectedCatalogId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedIngredientSearch, catalog]);
+
+  React.useEffect(() => {
+    if (!isFromCatalog && useInventoryPrice) {
+      setUseInventoryPrice(false);
+      setConsumeStock(false);
+    }
+  }, [isFromCatalog, useInventoryPrice]);
+
+  React.useEffect(() => {
+    if (!isFromCatalog || !useInventoryPrice) return;
+
+    const wacPerBase = stockProjection[selectedCatalogItem.id]?.cost;
+    if (!wacPerBase || wacPerBase <= 0) {
+      setUseInventoryPrice(false);
+      setConsumeStock(false);
+      return;
+    }
+
+    const resolvedCost = resolveIngredientCost({
+      wacPerBaseUnit: wacPerBase,
+      manualCostPerUsageUnit: undefined,
+      usageUnit: newUnit as any,
+      preferInventoryPrice: true
+    });
+    setNewPurchasePrice(resolvedCost.costPerUsageUnit.toFixed(4));
+  }, [isFromCatalog, useInventoryPrice, selectedCatalogItem, stockProjection, newUnit]);
 
   const handleCalculateTraditional = (dish: Dish) => {
     setSelectedDish(dish);
@@ -84,6 +278,10 @@ export const RecipesPage: React.FC = () => {
     setCustomSubRecipes(dish.subRecipes || []);
     setCustomVariants(dish.variants || []);
     setCustomIndirectCosts(dish.indirectCosts || []);
+    setInstructions(dish.instructions || '');
+    setNotes(dish.notes || '');
+    setDishAllergens(dish.allergens || {});
+    setDishVersion(dish.version || '1.0.0');
     setActiveTab('custom');
     setView('selection');
   };
@@ -93,14 +291,30 @@ export const RecipesPage: React.FC = () => {
     setDishName('');
     setDishPortions(1);
     setCustomIngredients([]);
+    setIngredientSearch('');
+    setSelectedCatalogId(null);
     setCustomSubRecipes([]);
     setCustomVariants([]);
     setCustomIndirectCosts([]);
+    setInstructions('');
+    setNotes('');
+    setDishAllergens({});
+    setDishVersion('1.0.0');
   };
 
   const handleSaveAndCalculate = () => {
-    if (!dishName || dishPortions <= 0) return;
-    if (customIngredients.length === 0 && customSubRecipes.length === 0) return;
+    if (!dishName.trim()) {
+      alert('Por favor, introduce un nombre para el plato.');
+      return;
+    }
+    if (dishPortions <= 0) {
+      alert('Las raciones que rinde deben ser mayores a 0.');
+      return;
+    }
+    if (customIngredients.length === 0 && customSubRecipes.length === 0) {
+      alert('Debes añadir al menos un ingrediente o sub-receta.');
+      return;
+    }
 
     const newDish: Dish = {
       id: editingDishId || Date.now().toString(),
@@ -110,12 +324,17 @@ export const RecipesPage: React.FC = () => {
       subRecipes: customSubRecipes,
       variants: customVariants,
       indirectCosts: customIndirectCosts,
+      instructions,
+      notes,
+      allergens: dishAllergens,
+      version: dishVersion,
+      lastUpdated: new Date().toISOString()
     };
 
     if (editingDishId) {
-      setDishes(dishes.map(d => d.id === editingDishId ? newDish : d));
+      updateDish(newDish);
     } else {
-      setDishes([...dishes, newDish]);
+      addDish(newDish);
     }
 
     setSelectedDish(newDish);
@@ -123,19 +342,37 @@ export const RecipesPage: React.FC = () => {
     setView('result');
   };
 
+  const validateIngredientDraft = (): string | null => {
+    if (!ingredientSearch.trim()) return 'Selecciona o crea el ingrediente.';
+    if (!newQuantity || parseFloat(newQuantity) <= 0) return 'La cantidad debe ser mayor a 0.';
+    if (!newPurchaseQuantity || parseFloat(newPurchaseQuantity) <= 0) return 'La cantidad de compra debe ser mayor a 0.';
+    if (!newUnit) return 'Debes seleccionar unidad de uso.';
+    if (!useInventoryPrice && consumeStock) return 'No puedes consumir inventario con precio manual.';
+    if (!isFromCatalog && useInventoryPrice) return 'Un ingrediente nuevo no puede usar WAC hasta existir en inventario.';
+    if (!useInventoryPrice && (!newPurchasePrice || parseFloat(newPurchasePrice) <= 0)) {
+      return 'Debes indicar un precio manual mayor que 0.';
+    }
+    return null;
+  };
+
   const handleAddCustomIngredient = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newQuantity || !newPurchasePrice || !newPurchaseQuantity) return;
+    const validationError = validateIngredientDraft();
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
 
     try {
-      const pPrice = parseFloat(newPurchasePrice);
+      const pPrice = parseFloat(newPurchasePrice || '0');
       const pQty = parseFloat(newPurchaseQuantity);
       
       const purchaseQtyInUsageUnit = convertUnit(pQty, newPurchaseUnit as any, newUnit as any);
-      const costPerUsageUnit = pPrice / purchaseQtyInUsageUnit;
+      const manualCostPerUsageUnit = pPrice / purchaseQtyInUsageUnit;
 
-      const cleanName = newName.trim();
-      let targetCat = catalog.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+      const cleanName = ingredientSearch.trim();
+      const normalizedName = cleanName.toLowerCase();
+      let targetCat = selectedCatalogItem || catalog.find(c => c.name.trim().toLowerCase() === normalizedName);
       let catId = targetCat?.id;
       
       if (!targetCat) {
@@ -144,16 +381,26 @@ export const RecipesPage: React.FC = () => {
           id: catId,
           name: cleanName,
           defaultUnit: newPurchaseUnit as any,
-          baseCost: costPerUsageUnit
+          baseCost: manualCostPerUsageUnit,
+          active: true
         };
         setCatalog([...catalog, newCatItem]);
       }
+
+      const resolvedCost = resolveIngredientCost({
+        wacPerBaseUnit: targetCat ? stockProjection[targetCat.id]?.cost : undefined,
+        manualCostPerUsageUnit,
+        usageUnit: newUnit as any,
+        preferInventoryPrice: useInventoryPrice
+      });
 
       const ingredientToAdd: Ingredient = {
         catalogId: catId!,
         quantity: parseFloat(newQuantity),
         unit: newUnit as any,
-        costPerUnit: costPerUsageUnit,
+        costPerUnit: resolvedCost.costPerUsageUnit,
+        priceSource: resolvedCost.source,
+        consumeStock,
         wastePercentage: newWaste ? parseFloat(newWaste) : 0,
         purchasePrice: pPrice,
         purchaseQuantity: pQty,
@@ -161,11 +408,14 @@ export const RecipesPage: React.FC = () => {
       };
 
       setCustomIngredients([...customIngredients, ingredientToAdd]);
-      setNewName('');
+      setIngredientSearch('');
+      setSelectedCatalogId(null);
       setNewQuantity('');
       setNewPurchasePrice('');
       setNewPurchaseQuantity('1');
       setNewWaste('');
+      setUseInventoryPrice(true);
+      setConsumeStock(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al convertir unidades.');
     }
@@ -178,7 +428,7 @@ export const RecipesPage: React.FC = () => {
     const baseDish = dishes.find(d => d.id === newSubRecipeId);
     if (!baseDish) return;
 
-    const costPerPortion = baseDish.ingredients.reduce((acc, ing) => acc + (ing.quantity * ing.costPerUnit), 0) / baseDish.portions;
+    const { costPerPortion } = calculateDishCost(baseDish, {}, stockProjection);
 
     const subRecipeToAdd: SubRecipeUsage = {
       dishId: baseDish.id,
@@ -210,7 +460,12 @@ export const RecipesPage: React.FC = () => {
 
   const handleAddVariantGroup = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newVariantGroupName) return;
+    if (!newVariantGroupName.trim()) {
+      setVariantGroupError(true);
+      variantGroupInputRef.current?.focus();
+      return;
+    }
+    setVariantGroupError(false);
     setCustomVariants([...customVariants, { 
       name: newVariantGroupName, 
       options: [
@@ -251,7 +506,7 @@ export const RecipesPage: React.FC = () => {
 
   const handleDeleteDish = () => {
     if (!selectedDish) return;
-    setDishes(dishes.filter(d => d.id !== selectedDish.id));
+    deleteDish(selectedDish.id);
     setShowDeleteConfirm(false);
     resetView();
   };
@@ -360,13 +615,24 @@ export const RecipesPage: React.FC = () => {
               </h3>
               
               {selectedDish.variants.map((group, idx) => {
-                const optionsAnalysis = group.options.map((opt, optIdx) => {
-                  const tempSelection = { ...selectedVariants, [group.name]: optIdx };
+                const baseOption = { name: 'Sin variante', quantity: 0, unit: '-' as any, costPerUnit: 0 };
+                const effectiveOptions = group.options.some(o => o.name === 'Sin variante') 
+                  ? group.options 
+                  : [baseOption, ...group.options];
+
+                const optionsAnalysis = effectiveOptions.map((opt, uiIdx) => {
+                  // Mapeamos el índice de la UI al índice real de los datos
+                  // Si no existe (es el 'Sin variante' virtual), usamos -1
+                  const dataIdx = group.options.findIndex(o => o.name === opt.name);
+                  
+                  const tempSelection = { ...selectedVariants, [group.name]: dataIdx };
                   const { totalCost } = calculateDishCost(selectedDish, tempSelection, stockProjection);
                   const suggestedPrice = totalCost / (1 - (marginPercent / 100));
                   const profitMargin = suggestedPrice - totalCost;
-                  return { opt, optIdx, totalCost, profitMargin };
+                  return { opt, dataIdx, totalCost, profitMargin };
                 });
+
+
 
                 const maxMargin = Math.max(...optionsAnalysis.map(o => o.profitMargin));
                 const minMargin = Math.min(...optionsAnalysis.map(o => o.profitMargin));
@@ -379,11 +645,11 @@ export const RecipesPage: React.FC = () => {
                     </div>
                     <div className="divide-y divide-slate-100">
                       {optionsAnalysis.map(analysis => {
-                        const isSelected = (selectedVariants[group.name] || 0) === analysis.optIdx;
+                        const isSelected = (selectedVariants[group.name] ?? -1) === analysis.dataIdx;
                         return (
                           <div 
-                            key={analysis.optIdx} 
-                            onClick={() => setSelectedVariants({...selectedVariants, [group.name]: analysis.optIdx})}
+                            key={analysis.dataIdx} 
+                            onClick={() => setSelectedVariants({...selectedVariants, [group.name]: analysis.dataIdx})}
                             className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer transition-colors hover:bg-slate-50 gap-3 ${isSelected ? 'bg-blue-50/50 border-l-4 border-l-[#06b6d4]' : 'border-l-4 border-l-transparent'}`}
                           >
                             <div className="flex items-center gap-3">
@@ -393,7 +659,7 @@ export const RecipesPage: React.FC = () => {
                               <div>
                                 <p className={`font-medium ${isSelected ? 'text-[#06b6d4]' : 'text-slate-800'}`}>
                                   {analysis.opt.name}
-                                  {analysis.optIdx === 0 && <span className="ml-2 text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Por defecto</span>}
+                                  {analysis.dataIdx === -1 && <span className="ml-2 text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Por defecto</span>}
                                 </p>
                                 <p className="text-xs text-slate-500 mt-0.5">Coste total receta: {analysis.totalCost.toFixed(2)}€</p>
                               </div>
@@ -461,6 +727,13 @@ export const RecipesPage: React.FC = () => {
                       <div key={idx} className="bg-white rounded-lg p-4 flex flex-col sm:flex-row justify-between sm:items-center border border-slate-200 gap-4">
                         <div>
                           <p className="font-medium text-slate-800">{displayName}</p>
+                          <div className="mt-1">
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                              {ing.priceSource === 'manual'
+                                ? 'Manual'
+                                : (ing.consumeStock === false ? 'Inventario (no consume)' : 'Inventario (consume)')}
+                            </span>
+                          </div>
                           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
                             <span className="text-xs text-slate-500">
                               {ing.quantity} {ing.unit} netos
@@ -601,9 +874,29 @@ export const RecipesPage: React.FC = () => {
 
         {/* Footer Actions */}
         <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row gap-3 sm:gap-4">
-          <button className="flex-1 bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all">
-            <Download size={18} />
-            Descargar PDF
+          <button 
+            onClick={async () => {
+              setIsGeneratingPdf(true);
+              try {
+                const model = await mapRecipeToPDFModel(selectedDish, catalog, selectedVariants, stockProjection);
+                setPdfData(model);
+                setShowPdfPreview(true);
+              } catch (error) {
+                console.error('PDF Error:', error);
+                alert('Error al generar la vista previa del PDF.');
+              } finally {
+                setIsGeneratingPdf(false);
+              }
+            }}
+            disabled={isGeneratingPdf}
+            className="flex-1 bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+          >
+            {isGeneratingPdf ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+            ) : (
+              <Printer size={18} />
+            )}
+            {isGeneratingPdf ? 'Generando...' : 'Exportar Ficha (PDF)'}
           </button>
           <button 
             onClick={resetView}
@@ -642,12 +935,22 @@ export const RecipesPage: React.FC = () => {
     );
   };
 
+  // Memoize PDF document to avoid expensive recalculations on each render
+  const pdfDocument = useMemo(() => {
+    if (!pdfData) return null;
+    return <RecipePDF data={pdfData} mode={pdfViewMode} />;
+  }, [pdfData, pdfViewMode]);
+
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24">
+    <div
+      className={`max-w-5xl mx-auto w-full min-h-screen ${
+        hasFloatingFooter ? 'pb-24' : 'pb-6 md:pb-8'
+      }`}
+    >
       {view === 'result' ? (
         renderResult()
       ) : (
-        <div className="w-full max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+        <div className="w-full max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[calc(100vh-220px)] md:min-h-[calc(100vh-280px)]">
           {/* Tabs */}
           <div className="flex border-b border-slate-200">
             <button 
@@ -718,8 +1021,16 @@ export const RecipesPage: React.FC = () => {
                       <input 
                         type="number" inputMode="decimal"
                         min="1"
-                        value={dishPortions}
-                        onChange={(e) => setDishPortions(parseInt(e.target.value) || 1)}
+                        value={dishPortions || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setDishPortions(0);
+                          } else {
+                            const parsed = parseInt(val);
+                            if (!isNaN(parsed)) setDishPortions(parsed);
+                          }
+                        }}
                         className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
                       />
                     </div>
@@ -764,6 +1075,11 @@ export const RecipesPage: React.FC = () => {
                                   {ing.purchasePrice && ing.purchaseQuantity && ing.purchaseUnit 
                                     ? <>{ing.purchasePrice}€ / {ing.purchaseQuantity} {ing.purchaseUnit} <span className="text-[10px] text-slate-400 block">({ing.costPerUnit.toFixed(4)}€/{ing.unit})</span></>
                                     : `${ing.costPerUnit.toFixed(4)}€ / ${ing.unit}`}
+                                  <span className="text-[10px] text-slate-500 block mt-1">
+                                    {ing.priceSource === 'manual'
+                                      ? 'Manual'
+                                      : (ing.consumeStock === false ? 'Inventario (no consume)' : 'Inventario (consume)')}
+                                  </span>
                                 </td>
                                 <td className="p-3 text-amber-600">{ing.wastePercentage}%</td>
                                 <td className="p-3">
@@ -784,13 +1100,82 @@ export const RecipesPage: React.FC = () => {
 
                   <form onSubmit={handleAddCustomIngredient} className="bg-slate-50 p-5 rounded-xl border border-slate-200 mb-4 shadow-sm">
                     <div className="mb-4">
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Nombre del ingrediente</label>
-                      <input 
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-slate-700">Nombre del ingrediente</label>
+                        <button 
+                          type="button"
+                          onClick={() => setShowInventoryPicker(!showInventoryPicker)}
+                          className={`text-xs font-medium px-2 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                            showInventoryPicker 
+                              ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' 
+                              : 'bg-[#06b6d4]/10 text-[#06b6d4] hover:bg-[#06b6d4]/20'
+                          }`}
+                        >
+                          {showInventoryPicker ? (
+                            <><X size={14} /> Cerrar catálogo</>
+                          ) : (
+                            <><Plus size={14} /> Usar Inventario</>
+                          )}
+                        </button>
+                      </div>
+                      
+                      <input
                         type="text" required
-                        value={newName} onChange={e => setNewName(e.target.value)}
+                        value={ingredientSearch}
+                        onChange={e => setIngredientSearch(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
-                        placeholder="Ej. Patata"
+                        placeholder="Busca o escribe un ingrediente..."
+                        list="catalog-ingredient-suggestions"
                       />
+                      <datalist id="catalog-ingredient-suggestions">
+                        {filteredCatalogItems.map(item => (
+                          <option key={item.id} value={item.name} />
+                        ))}
+                      </datalist>
+
+                      {showInventoryPicker && (
+                        <div className="mt-3 p-3 bg-white border border-[#06b6d4]/20 rounded-lg shadow-inner animate-in fade-in slide-in-from-top-2 duration-200">
+                          <label className="block text-xs font-bold text-[#06b6d4] uppercase tracking-wider mb-2">Elegir desde catálogo</label>
+                          <select
+                            value={selectedCatalogId || ''}
+                            onChange={(e) => {
+                              if (!e.target.value) return;
+                              const selected = catalog.find(c => c.id === e.target.value);
+                              if (!selected) return;
+                              setSelectedCatalogId(selected.id);
+                              setIngredientSearch(selected.name);
+                              setUseInventoryPrice(true);
+                              setConsumeStock(true);
+                              setNewUnit(selected.defaultUnit);
+                              setNewPurchaseUnit(selected.defaultUnit === 'kg' || selected.defaultUnit === 'l' || selected.defaultUnit === 'ud'
+                                ? selected.defaultUnit
+                                : (selected.defaultUnit === 'g' ? 'kg' : 'l')
+                              );
+                              // Auto-cerrar al seleccionar para limpiar la vista
+                              setShowInventoryPicker(false);
+                            }}
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] bg-white shadow-sm"
+                          >
+                            <option value="">Buscar en el inventario...</option>
+                            {[...catalog]
+                              .filter(c => c.active)
+                              .sort((a, b) => {
+                                const aHasPrice = !!stockProjection[a.id]?.cost;
+                                const bHasPrice = !!stockProjection[b.id]?.cost;
+                                if (aHasPrice !== bHasPrice) return bHasPrice ? 1 : -1;
+                                return a.name.localeCompare(b.name);
+                              })
+                              .map(item => (
+                                <option key={item.id} value={item.id}>
+                                  {item.name}{stockProjection[item.id]?.cost ? ' • con precio inventario' : ' • sin precio inventario'}
+                                </option>
+                              ))}
+                          </select>
+                          <p className="text-[10px] text-slate-400 mt-2 italic">
+                            💡 Al seleccionar, se vincularán automáticamente los precios y unidades del inventario.
+                          </p>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -847,9 +1232,19 @@ export const RecipesPage: React.FC = () => {
                             <input 
                               type="number" inputMode="decimal" required min="0" step="any"
                               value={newPurchasePrice} onChange={e => setNewPurchasePrice(e.target.value)}
-                              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
+                              disabled={priceLocked}
+                              className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] ${
+                                priceLocked
+                                  ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
+                                  : 'border-slate-300'
+                              }`}
                               placeholder="0.00"
                             />
+                            <div className="min-h-[16px] mt-1">
+                              {priceLocked && (
+                                <p className="text-[10px] text-slate-500">🔒 Precio calculado automáticamente desde inventario</p>
+                              )}
+                            </div>
                           </div>
                           <div className="col-span-1">
                             <label className="block text-xs font-medium text-slate-500 mb-1">Cantidad</label>
@@ -877,7 +1272,56 @@ export const RecipesPage: React.FC = () => {
                       </div>
                     </div>
                     
-                    <div className="mt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-100 p-3 rounded-lg border border-slate-200">
+                    <div className="mt-4 space-y-3 bg-slate-100 p-3 rounded-lg border border-slate-200">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className={`relative inline-flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${
+                          isFromCatalog
+                            ? 'bg-white/80 border-slate-300 hover:border-[#06b6d4] cursor-pointer'
+                            : 'bg-slate-100/50 border-slate-200 cursor-not-allowed opacity-50'
+                        }`}>
+                          <span className="text-sm font-medium text-slate-700">Usar precio del inventario (WAC)</span>
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={useInventoryPrice}
+                            disabled={!isFromCatalog}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setUseInventoryPrice(checked);
+                              if (!checked) setConsumeStock(false);
+                            }}
+                          />
+                          <span className={`relative w-11 h-6 rounded-full transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5 shadow-sm ${
+                            !isFromCatalog ? 'bg-slate-200' : 'bg-slate-300 peer-checked:bg-[#06b6d4]'
+                          }`} />
+                        </label>
+
+                        <label
+                          className={`relative inline-flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${
+                            useInventoryPrice
+                              ? 'bg-white/80 border-slate-300 hover:border-[#06b6d4] cursor-pointer'
+                              : 'bg-slate-100/50 border-slate-200 cursor-not-allowed opacity-50'
+                          }`}
+                          title="Si está desactivado, este ingrediente no afectará el stock al producir."
+                        >
+                          <span className="text-sm font-medium text-slate-700">Consumir del inventario</span>
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={consumeStock}
+                            disabled={!useInventoryPrice}
+                            onChange={(e) => setConsumeStock(e.target.checked)}
+                          />
+                          <span className="relative w-11 h-6 rounded-full bg-slate-300 transition-colors peer-checked:bg-[#06b6d4] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5 shadow-sm" />
+                        </label>
+                      </div>
+                      {!isFromCatalog && ingredientSearch.trim() && (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                          ⚠️ Ingrediente nuevo: se usará precio manual y no consumirá inventario hasta existir en catálogo.
+                        </p>
+                      )}
+
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       {/* Real-time preview */}
                       <div className="text-sm flex-1">
                         {newQuantity && newPurchasePrice && newPurchaseQuantity ? (
@@ -927,6 +1371,7 @@ export const RecipesPage: React.FC = () => {
                         <Plus size={18} />
                         Añadir
                       </button>
+                      </div>
                     </div>
                   </form>
                 </div>
@@ -957,20 +1402,97 @@ export const RecipesPage: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {customSubRecipes.map((sub, idx) => (
-                              <tr key={idx}>
-                                <td className="p-3 font-medium text-slate-800">{sub.name}</td>
-                                <td className="p-3 text-slate-600">{sub.quantity}</td>
-                                <td className="p-3">
-                                  <button 
-                                    onClick={() => setCustomSubRecipes(customSubRecipes.filter((_, i) => i !== idx))}
-                                    className="text-slate-400 hover:text-red-500 transition-colors p-2"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                            {customSubRecipes.map((sub, idx) => {
+                              const baseDish = dishes.find(d => d.id === sub.dishId);
+                              const isExpanded = expandedSubRecipeIdx === idx;
+                              
+                              // El cálculo se hace aquí de forma memoizada o directa dado que el factor es simple
+                              const breakdown = isExpanded && baseDish 
+                                ? getScaledDishBreakdown(baseDish, sub.quantity, stockProjection, catalog)
+                                : null;
+
+                              return (
+                                <React.Fragment key={idx}>
+                                  <tr className={`transition-colors ${isExpanded ? 'bg-slate-50/80' : 'hover:bg-slate-50/50'}`}>
+                                    <td className="p-3 font-medium text-slate-800">
+                                      <div className="flex items-center gap-2">
+                                        <button 
+                                          type="button"
+                                          onClick={() => setExpandedSubRecipeIdx(isExpanded ? null : idx)}
+                                          className={`p-1.5 rounded-md transition-all ${isExpanded ? 'bg-[#06b6d4] text-white shadow-sm' : 'text-[#06b6d4] hover:bg-[#06b6d4]/10'}`}
+                                          title={isExpanded ? "Ocultar desglose" : "Ver desglose"}
+                                        >
+                                          {isExpanded ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                        <span className={isExpanded ? 'text-[#06b6d4]' : ''}>{sub.name}</span>
+                                      </div>
+                                    </td>
+                                    <td className="p-3 text-slate-600 font-medium">
+                                      {sub.quantity} <span className="text-[10px] text-slate-400 font-normal">raciones</span>
+                                    </td>
+                                    <td className="p-3 text-right">
+                                      <button 
+                                        type="button"
+                                        onClick={() => {
+                                          setCustomSubRecipes(customSubRecipes.filter((_, i) => i !== idx));
+                                          if (expandedSubRecipeIdx === idx) setExpandedSubRecipeIdx(null);
+                                        }}
+                                        className="text-slate-400 hover:text-red-500 transition-colors p-2"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                  {isExpanded && breakdown && (
+                                    <tr className="bg-slate-50/80">
+                                      <td colSpan={3} className="p-0 border-b border-slate-200">
+                                        <div className="px-10 py-4 text-[11px] animate-in slide-in-from-top-2 duration-200 border-l-2 border-[#06b6d4] ml-3 mb-2">
+                                          <div className="flex items-center justify-between mb-3">
+                                            <h5 className="font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                              <Calculator size={12} /> Impacto en {sub.quantity} raciones
+                                            </h5>
+                                            <span className="bg-white border border-slate-200 px-2 py-0.5 rounded text-[10px] font-bold text-slate-400">
+                                              Coste Base: {sub.costPerUnit.toFixed(2)}€/ud
+                                            </span>
+                                          </div>
+                                          
+                                          <div className="space-y-1.5">
+                                            {breakdown.items.map((item, iIdx) => (
+                                              <div key={iIdx} className="flex justify-between items-center group">
+                                                <span className="text-slate-500 group-hover:text-slate-700 transition-colors">
+                                                  <span className="opacity-40 mr-1.5">•</span>
+                                                  {item.name}
+                                                </span>
+                                                <div className="flex items-center gap-4">
+                                                  <span className="text-slate-400 tabular-nums">
+                                                    {item.quantity.toFixed(2)} {item.unit}
+                                                  </span>
+                                                  <span className="font-bold text-slate-700 min-w-[50px] text-right tabular-nums">
+                                                    {item.cost.toFixed(2)}€
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            ))}
+                                            
+                                            {breakdown.indirectCost > 0 && (
+                                              <div className="flex justify-between items-center pt-1 text-[#06b6d4] italic">
+                                                <span>+ Costes Indirectos Proporcionales</span>
+                                                <span className="font-medium tabular-nums">{breakdown.indirectCost.toFixed(2)}€</span>
+                                              </div>
+                                            )}
+                                            
+                                            <div className="flex justify-between items-center pt-2 mt-2 border-t border-slate-200 font-bold text-slate-800 text-xs">
+                                              <span>Total Aportado al Escandallo</span>
+                                              <span className="text-sm tracking-tight">{breakdown.totalCost.toFixed(2)}€</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -1029,7 +1551,7 @@ export const RecipesPage: React.FC = () => {
                         <div className="flex gap-2">
                           <button 
                             onClick={() => setActiveVariantGroup(activeVariantGroup === group.name ? '' : group.name)}
-                            className="text-xs bg-white border border-slate-200 px-3 py-1 rounded-md hover:bg-slate-50"
+                            className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors font-medium shadow-sm"
                           >
                             + Añadir Opción
                           </button>
@@ -1121,13 +1643,34 @@ export const RecipesPage: React.FC = () => {
                   ))}
 
                   <form onSubmit={handleAddVariantGroup} className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={newVariantGroupName} onChange={e => setNewVariantGroupName(e.target.value)}
-                      className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
-                      placeholder="Nueva categoría de variante (ej. Tipo de Arroz)"
-                    />
-                    <button type="submit" className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <input 
+                        ref={variantGroupInputRef}
+                        type="text" 
+                        value={newVariantGroupName} 
+                        onChange={e => {
+                          setNewVariantGroupName(e.target.value);
+                          if (variantGroupError) setVariantGroupError(false);
+                        }}
+                        className={`w-full border rounded-lg px-4 py-2 text-sm focus:ring-2 transition-all ${
+                          variantGroupError 
+                          ? 'border-red-400 bg-red-50 ring-red-100 focus:ring-red-400 placeholder:text-red-400' 
+                          : 'border-slate-300 focus:ring-[#06b6d4]'
+                        }`}
+                        placeholder={variantGroupError ? "Introduce un nombre para el grupo..." : "Nueva categoría de variante (ej. Tipo de Arroz)"}
+                      />
+                      {variantGroupError && (
+                        <span className="text-[10px] text-red-500 font-medium ml-1">El nombre del grupo es obligatorio</span>
+                      )}
+                    </div>
+                    <button 
+                      type="submit" 
+                      className={`h-fit px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        variantGroupError 
+                        ? 'bg-red-500 text-white shadow-lg shadow-red-200' 
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
                       Añadir Grupo
                     </button>
                   </form>
@@ -1208,6 +1751,68 @@ export const RecipesPage: React.FC = () => {
                     </div>
                   </form>
                 </div>
+                
+                {/* Operational Info & versioning */}
+                <div className="mb-8 bg-slate-50 p-6 rounded-xl border border-slate-100">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Info size={20} className="text-[#06b6d4]" />
+                    Información Operativa
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Versión del Escandallo</label>
+                        <input 
+                          type="text" value={dishVersion} onChange={e => setDishVersion(e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] bg-white"
+                          placeholder="Ej. 1.0.0"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Instrucciones de Preparación</label>
+                      <textarea 
+                        rows={4}
+                        value={instructions} onChange={e => setInstructions(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#06b6d4]"
+                        placeholder="Describe los pasos para cocinar el plato..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Notas Internas (No visibles en cocina)</label>
+                      <textarea 
+                        rows={2}
+                        value={notes} onChange={e => setNotes(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#06b6d4]"
+                        placeholder="Notas sobre mermas especiales, proveedores, etc."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Allergens Selection */}
+                <div className="mb-8">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <div className="w-5 h-5 bg-amber-100 text-amber-600 rounded flex items-center justify-center text-[10px] font-bold">!</div>
+                    Alérgenos (Reglamento UE 1169/2011)
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      'Gluten', 'Crustáceos', 'Huevos', 'Pescado', 'Cacahuetes', 'Soja', 'Lácteos', 
+                      'Frutos secos', 'Apio', 'Mostaza', 'Sésamo', 'Sulfitos', 'Altramuces', 'Moluscos'
+                    ].map(alg => (
+                      <label key={alg} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${dishAllergens[alg] ? 'bg-amber-50 border-amber-200 text-amber-900 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 accent-amber-600"
+                          checked={!!dishAllergens[alg]}
+                          onChange={(e) => setDishAllergens({ ...dishAllergens, [alg]: e.target.checked })}
+                        />
+                        <span className="text-sm font-medium">{alg}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Calculate Button */}
                 <div className="flex justify-end pt-4">
@@ -1221,6 +1826,89 @@ export const RecipesPage: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* PDF Preview Modal */}
+      {showPdfPreview && pdfData && (
+        <div className="fixed inset-0 bg-slate-900/90 flex flex-col z-[100] animate-in fade-in duration-200">
+          <div className="flex justify-between items-center p-4 bg-[#1e293b] text-white border-b border-slate-700">
+            <div className="flex items-center gap-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Eye size={20} className="text-[#06b6d4]" />
+                Vista Previa de Ficha
+              </h2>
+              <div className="hidden sm:flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                <button 
+                  onClick={() => setPdfViewMode('kitchen')}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${pdfViewMode === 'kitchen' ? 'bg-[#06b6d4] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Modo Cocina
+                </button>
+                <button 
+                  onClick={() => setPdfViewMode('manager')}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${pdfViewMode === 'manager' ? 'bg-[#06b6d4] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Modo Manager
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <PDFDownloadLink
+                document={<RecipePDF data={pdfData} mode={pdfViewMode} />}
+                fileName={`Ficha_${pdfData.identity.name.replace(/\s+/g, '_')}_${pdfViewMode}.pdf`}
+                className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg flex items-center gap-2 transition-all shadow-md active:scale-95"
+              >
+                {({ loading }) => (
+                  loading ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} />
+                )}
+              </PDFDownloadLink>
+              <button 
+                onClick={() => setShowPdfPreview(false)}
+                className="p-2 hover:bg-slate-700 rounded-full transition-colors"
+                title="Cerrar"
+              >
+                <X size={24} />
+              </button>
+            </div>
+          </div>
+
+          <div className="sm:hidden flex bg-[#1e293b] p-2 gap-2 border-b border-slate-700">
+            <button 
+              onClick={() => setPdfViewMode('kitchen')}
+              className={`flex-1 py-2 rounded-md text-xs font-bold ${pdfViewMode === 'kitchen' ? 'bg-[#06b6d4] text-white' : 'bg-slate-800 text-slate-400'}`}
+            >
+              COCINA
+            </button>
+            <button 
+              onClick={() => setPdfViewMode('manager')}
+              className={`flex-1 py-2 rounded-md text-xs font-bold ${pdfViewMode === 'manager' ? 'bg-[#06b6d4] text-white' : 'bg-slate-800 text-slate-400'}`}
+            >
+              MANAGER
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-hidden bg-slate-800 relative flex flex-col items-center justify-center">
+            {!isCompact ? (
+              /* Desktop View: Full integrated viewer with native tools */
+              <div className="h-[calc(100vh-200px)] w-full overflow-hidden">
+                <PDFViewer className="w-full h-full border-none" showToolbar={true}>
+                  {pdfDocument!}
+                </PDFViewer>
+              </div>
+            ) : (
+              /* Compact View: Professional Fallback for Mobile/Small tablets */
+              <MobilePDFFallback 
+                document={pdfDocument!} 
+                fileName={`Ficha_${pdfData.identity.name.replace(/\s+/g, '_')}_${pdfViewMode}.pdf`}
+              />
+            )}
+          </div>
+          
+          <div className="p-4 bg-slate-900 border-t border-slate-800 text-center">
+            <p className="text-slate-500 text-xs">
+              Optimizado para impresión B&N. Los alérgenos y el QR son obligatorios para cumplimiento legal y trazabilidad.
+            </p>
           </div>
         </div>
       )}

@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { AlertCircle, ArrowRight, CheckCircle2, TrendingUp, TrendingDown, ClipboardList, Package, DollarSign, Activity, Utensils } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, TrendingUp, TrendingDown, ClipboardList, Package, DollarSign, Activity, Utensils, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { computeStockProjection } from '../services/inventory.service';
 import { calculateDishCost } from '../App';
-import { normalizeQuantity, formatCostForDisplay, formatQuantityForDisplay } from '../domain/units';
+import { normalizeQuantity, formatCostForDisplay, formatQuantityForDisplay, formatNumber } from '../domain/units';
 import { BaseUnit } from '../domain/types';
+
 
 interface DashboardPageProps {
   onNavigate: (page: string) => void;
@@ -27,10 +28,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   // A. Check for negative stock
   Object.entries(stockProjection).forEach(([name, data]) => {
     if (data.quantity <= 0) {
+      const displayQty = formatQuantityForDisplay(data.quantity, data.unit as BaseUnit);
       alerts.push({
         id: `out_${name}`,
         type: 'critical',
-        message: `Stock negativo o agotado: ${name} (${Number(data.quantity.toFixed(2))} ${data.unit})`,
+        message: `Stock negativo o agotado: ${name} (${formatNumber(displayQty.value)} ${displayQty.unit})`,
         cta: 'Registrar Compra / Ajuste',
         actionUrl: 'inventory'
       });
@@ -268,9 +270,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             </div>
             <ul className="divide-y divide-slate-100">
               {recentEvents.map((ev) => {
-                const isPositive = ev.type === 'PURCHASE';
+                const isPositive = ev.quantity > 0 || (ev.type === 'PURCHASE' && ev.quantity !== 0);
                 const catItem = catalog.find(c => c.id === ev.ingredientId);
                 const displayName = catItem?.name || ev.ingredientId;
+                const displayQty = formatQuantityForDisplay(Math.abs(ev.quantity), ev.unit as BaseUnit);
+
                 return (
                   <li key={ev.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
                     <div>
@@ -278,7 +282,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
                           isPositive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                         }`}>
-                          {ev.type === 'PURCHASE' ? 'Entrada' : 'Salida'}
+                          {ev.type === 'PURCHASE' ? 'Entrada' : ev.type === 'CONSUMPTION' ? 'Salida' : 'Ajuste'}
                         </span>
                         <p className="font-medium text-slate-800 text-sm">{displayName}</p>
                       </div>
@@ -288,21 +292,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     </div>
                     <div className="text-right">
                       <p className={`font-bold text-sm ${isPositive ? 'text-green-600' : 'text-amber-600'}`}>
-                        {isPositive ? '+' : '-'}{ev.quantity} {ev.unit}
+                        {ev.quantity > 0 ? '+' : (ev.quantity < 0 ? '-' : '')}{formatNumber(displayQty.value)} {displayQty.unit}
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5">@ {ev.costPerUnit.toFixed(4)}€</p>
+                      <p className="text-xs text-slate-500 mt-0.5">@ {formatNumber(ev.costPerUnit, 4)}€</p>
                     </div>
                   </li>
                 );
               })}
-              {recentEvents.length === 0 && (
-                <li className="p-6 text-center text-slate-500 text-sm">No hay movimientos recientes.</li>
-              )}
             </ul>
           </div>
         </section>
       </div>
-
     </div>
   );
 };

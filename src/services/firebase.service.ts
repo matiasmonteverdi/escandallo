@@ -9,7 +9,8 @@ import {
   deleteDoc,
   onSnapshot,
   query,
-  where
+  where,
+  limit
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CatalogItem, Dish, Production, InventoryEvent } from '../data';
@@ -75,7 +76,7 @@ export const firebaseService = {
    * Checks if a collection is empty (useful for seeding).
    */
   isCollectionEmpty: async (collectionName: string): Promise<boolean> => {
-    const q = query(collection(db, collectionName), where('__name__', '!=', ''));
+    const q = query(collection(db, collectionName), limit(1));
     const snapshot = await getDocs(q);
     return snapshot.empty;
   }

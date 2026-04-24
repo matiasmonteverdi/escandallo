@@ -5,10 +5,15 @@ import { ProductionPage } from './pages/ProductionPage';
 import { DebugLedgerPage } from './pages/DebugLedgerPage';
 import { RecipesPage } from './pages/RecipesPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ConfigPage } from './pages/ConfigPage';
 import { normalizeQuantity } from './domain/units';
 import { useAppStore } from './store/useAppStore';
-import { seedDatabase } from './services/db-seed';
+
+
+
 import { Loader2 } from 'lucide-react';
+import { exampleDataService } from './services/exampleData.service';
+
 
 // We keep this exported for any other components that might need it, 
 // though ideally it should be in a service.
@@ -34,7 +39,11 @@ export const calculateDishCost = (dish: any, selectedVariants: Record<string, nu
   let variantsCost = 0;
   if (dish.variants) {
     dish.variants.forEach((group: any) => {
-      const selectedIdx = selectedVariants[group.name] || 0;
+      const selectedIdx = selectedVariants[group.name];
+      // Si el índice es undefined (no seleccionado), -1 (Sin variante virtual), 
+      // o apunta a una opción llamada "Sin variante", no sumamos coste extra.
+      if (selectedIdx === undefined || selectedIdx === -1) return;
+      
       const option = group.options[selectedIdx];
       if (option && option.name !== 'Sin variante') {
         const liveBaseCost = inventoryStock[option.name]?.cost;
@@ -67,14 +76,29 @@ function App() {
   const { initSync, loading } = useAppStore();
 
   React.useEffect(() => {
-    // 1. Seed the database with initial data if needed
-    seedDatabase();
-    
-    // 2. Start real-time sync with Firestore
-    const cleanup = initSync();
-    
-    return () => cleanup();
+    // Start real-time sync with Firestore
+    const unsub = initSync();
+    return () => unsub();
   }, [initSync]);
+
+  // Deep link: si la URL tiene #dish=<id>, navegar al escandallo directamente
+  const { dishes, setSelectedDish, setView } = useAppStore();
+  React.useEffect(() => {
+    if (!dishes.length) return;
+    const hash = window.location.hash;
+    const match = hash.match(/^#dish=(.+)$/);
+    if (!match) return;
+    const dishId = decodeURIComponent(match[1]);
+    const dish = dishes.find(d => d.id === dishId);
+    if (dish) {
+      setSelectedDish(dish);
+      setView('result');
+      setActivePage('recipes');
+      history.replaceState(null, '', window.location.pathname);
+    }
+  }, [dishes]);
+
+
 
   if (loading) {
     return (
@@ -92,8 +116,9 @@ function App() {
       {activePage === 'production' && <ProductionPage />}
       {activePage === 'inventory' && <InventoryPage />}
       {activePage === 'debug' && <DebugLedgerPage />}
+      {activePage === 'config' && <ConfigPage />}
 
-      {activePage !== 'dashboard' && activePage !== 'recipes' && activePage !== 'production' && activePage !== 'inventory' && activePage !== 'debug' && (
+      {activePage !== 'dashboard' && activePage !== 'recipes' && activePage !== 'production' && activePage !== 'inventory' && activePage !== 'debug' && activePage !== 'config' && (
         <div className="p-6 md:p-8 flex items-center justify-center h-full text-slate-400">
           Módulo en construcción
         </div>
