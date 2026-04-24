@@ -23,7 +23,7 @@ function useMediaQuery(query: string): boolean {
   useEffect(() => {
     const media = window.matchMedia(query);
     const listener = () => setMatches(media.matches);
-    
+
     // Modern browsers use addEventListener
     if (media.addEventListener) {
       media.addEventListener('change', listener);
@@ -98,7 +98,7 @@ const MobilePDFFallback: React.FC<MobilePDFFallbackProps> = ({ document, fileNam
             )}
             VER FICHA COMPLETA
           </button>
-          
+
           <button
             onClick={() => handleAction('download')}
             disabled={generating}
@@ -149,12 +149,12 @@ export const RecipesPage: React.FC = () => {
   const [customIngredients, setCustomIngredients] = useState<Ingredient[]>([]);
   const [ingredientSearch, setIngredientSearch] = useState('');
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(null);
-  
+
   // Recipe Usage
   const [newQuantity, setNewQuantity] = useState('');
   const [newUnit, setNewUnit] = useState('g');
   const [newWaste, setNewWaste] = useState('');
-  
+
   // Purchase Price
   const [newPurchasePrice, setNewPurchasePrice] = useState('');
   const [newPurchaseQuantity, setNewPurchaseQuantity] = useState('1');
@@ -199,7 +199,7 @@ export const RecipesPage: React.FC = () => {
   const [newIcName, setNewIcName] = useState('');
   const [newIcType, setNewIcType] = useState<'fixed' | 'percentage'>('percentage');
   const [newIcValue, setNewIcValue] = useState('');
-  
+
   // Operational fields
   const [instructions, setInstructions] = useState('');
   const [notes, setNotes] = useState('');
@@ -366,7 +366,7 @@ export const RecipesPage: React.FC = () => {
     try {
       const pPrice = parseFloat(newPurchasePrice || '0');
       const pQty = parseFloat(newPurchaseQuantity);
-      
+
       const purchaseQtyInUsageUnit = convertUnit(pQty, newPurchaseUnit as any, newUnit as any);
       const manualCostPerUsageUnit = pPrice / purchaseQtyInUsageUnit;
 
@@ -374,7 +374,7 @@ export const RecipesPage: React.FC = () => {
       const normalizedName = cleanName.toLowerCase();
       let targetCat = selectedCatalogItem || catalog.find(c => c.name.trim().toLowerCase() === normalizedName);
       let catId = targetCat?.id;
-      
+
       if (!targetCat) {
         catId = `cat_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const newCatItem = {
@@ -466,11 +466,11 @@ export const RecipesPage: React.FC = () => {
       return;
     }
     setVariantGroupError(false);
-    setCustomVariants([...customVariants, { 
-      name: newVariantGroupName, 
+    setCustomVariants([...customVariants, {
+      name: newVariantGroupName,
       options: [
         { name: 'Sin variante', quantity: 0, unit: '-' as any, costPerUnit: 0 }
-      ] 
+      ]
     }]);
     setNewVariantGroupName('');
   };
@@ -491,7 +491,7 @@ export const RecipesPage: React.FC = () => {
       }
       return g;
     }));
-    
+
     setNewVariantOptionName('');
     setNewVariantOptionQty('');
     setNewVariantOptionUnit('g');
@@ -515,7 +515,7 @@ export const RecipesPage: React.FC = () => {
     if (!selectedDish) return null;
 
     const { totalCost, ingredientsCost, subRecipesCost, variantsCost, indirectCostsValue, directCost } = calculateDishCost(selectedDish, selectedVariants, stockProjection);
-    
+
     const suggestedPrice = totalCost / (1 - (marginPercent / 100));
     const profitMargin = suggestedPrice - totalCost;
 
@@ -528,21 +528,21 @@ export const RecipesPage: React.FC = () => {
             <p className="text-slate-400 text-sm mt-1">Análisis de escandallo profesional</p>
           </div>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={() => handleEditDish(selectedDish)}
               className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-sm font-medium transition-colors"
             >
               <Edit size={16} />
               <span className="hidden sm:inline">Editar</span>
             </button>
-            <button 
+            <button
               onClick={() => setShowDeleteConfirm(true)}
               className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/40 text-red-200 px-4 py-2 rounded-md text-sm font-medium transition-colors"
             >
               <Trash2 size={16} />
               <span className="hidden sm:inline">Eliminar</span>
             </button>
-            <button 
+            <button
               onClick={resetView}
               className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-sm font-medium transition-colors"
             >
@@ -581,19 +581,54 @@ export const RecipesPage: React.FC = () => {
                 {marginPercent.toFixed(1)}%
               </span>
             </div>
-            
-            <div className="py-2 mb-6">
-              <input 
-                type="range" 
-                min="0" 
-                max="99" 
+
+            <div className="py-4 mb-6 relative">
+              <input
+                type="range"
+                min="0"
+                max="99"
                 step="1"
-                value={marginPercent} 
+                value={marginPercent}
                 onChange={(e) => setMarginPercent(parseFloat(e.target.value))}
-                className="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#06b6d4]"
+                className="w-full h-2 rounded-full appearance-none cursor-pointer focus:outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all"
+                style={{
+                  background: `linear-gradient(to right, #06b6d4 ${(marginPercent / 99) * 100}%, #e2e8f0 ${(marginPercent / 99) * 100}%)`
+                }}
               />
+              <style>{`
+                input[type=range]::-webkit-slider-thumb {
+                  -webkit-appearance: none;
+                  appearance: none;
+                  width: 24px;
+                  height: 24px;
+                  background: white;
+                  border: 2.5px solid #06b6d4;
+                  border-radius: 50%;
+                  cursor: pointer;
+                  box-shadow: 0 2px 6px rgba(6, 182, 212, 0.25);
+                  transition: all 0.2s ease;
+                }
+                input[type=range]::-webkit-slider-thumb:hover {
+                  transform: scale(1.1);
+                  box-shadow: 0 4px 10px rgba(6, 182, 212, 0.35);
+                }
+                input[type=range]::-moz-range-thumb {
+                  width: 24px;
+                  height: 24px;
+                  background: white;
+                  border: 2.5px solid #06b6d4;
+                  border-radius: 50%;
+                  cursor: pointer;
+                  box-shadow: 0 2px 6px rgba(6, 182, 212, 0.25);
+                  transition: all 0.2s ease;
+                }
+                input[type=range]::-moz-range-thumb:hover {
+                  transform: scale(1.1);
+                  box-shadow: 0 4px 10px rgba(6, 182, 212, 0.35);
+                }
+              `}</style>
             </div>
-            
+
             <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-slate-200">
               <div className="text-center flex-1 border-r border-slate-100">
                 <p className="text-xs text-slate-500 mb-1">Precio Venta</p>
@@ -613,18 +648,18 @@ export const RecipesPage: React.FC = () => {
                 <Layers size={20} className="text-[#06b6d4]" />
                 Comparativa de Rentabilidad por Variante
               </h3>
-              
+
               {selectedDish.variants.map((group, idx) => {
                 const baseOption = { name: 'Sin variante', quantity: 0, unit: '-' as any, costPerUnit: 0 };
-                const effectiveOptions = group.options.some(o => o.name === 'Sin variante') 
-                  ? group.options 
+                const effectiveOptions = group.options.some(o => o.name === 'Sin variante')
+                  ? group.options
                   : [baseOption, ...group.options];
 
                 const optionsAnalysis = effectiveOptions.map((opt, uiIdx) => {
                   // Mapeamos el índice de la UI al índice real de los datos
                   // Si no existe (es el 'Sin variante' virtual), usamos -1
                   const dataIdx = group.options.findIndex(o => o.name === opt.name);
-                  
+
                   const tempSelection = { ...selectedVariants, [group.name]: dataIdx };
                   const { totalCost } = calculateDishCost(selectedDish, tempSelection, stockProjection);
                   const suggestedPrice = totalCost / (1 - (marginPercent / 100));
@@ -647,9 +682,9 @@ export const RecipesPage: React.FC = () => {
                       {optionsAnalysis.map(analysis => {
                         const isSelected = (selectedVariants[group.name] ?? -1) === analysis.dataIdx;
                         return (
-                          <div 
-                            key={analysis.dataIdx} 
-                            onClick={() => setSelectedVariants({...selectedVariants, [group.name]: analysis.dataIdx})}
+                          <div
+                            key={analysis.dataIdx}
+                            onClick={() => setSelectedVariants({ ...selectedVariants, [group.name]: analysis.dataIdx })}
                             className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer transition-colors hover:bg-slate-50 gap-3 ${isSelected ? 'bg-blue-50/50 border-l-4 border-l-[#06b6d4]' : 'border-l-4 border-l-transparent'}`}
                           >
                             <div className="flex items-center gap-3">
@@ -703,7 +738,7 @@ export const RecipesPage: React.FC = () => {
                     const displayName = catItem ? catItem.name : 'Desconocido';
                     const waste = ing.wastePercentage || 0;
                     const grossQuantity = ing.quantity / (1 - (waste / 100));
-                    
+
                     let ingCost = grossQuantity * ing.costPerUnit;
                     const liveBaseCost = stockProjection[ing.catalogId]?.cost;
                     let liveCostInUsageUnit = 0;
@@ -712,17 +747,17 @@ export const RecipesPage: React.FC = () => {
                     if (liveBaseCost && liveBaseCost > 0) {
                       const { quantity: baseQty } = normalizeQuantity(grossQuantity, ing.unit);
                       ingCost = baseQty * liveBaseCost;
-                      
+
                       const { quantity: qty1InBase } = normalizeQuantity(1, ing.unit);
                       liveCostInUsageUnit = liveBaseCost * qty1InBase;
-                      
+
                       if (Math.abs(liveCostInUsageUnit - ing.costPerUnit) > 0.0001) {
                         hasDiscrepancy = true;
                       }
                     }
 
                     const percentage = totalCost > 0 ? (ingCost / totalCost) * 100 : 0;
-                    
+
                     return (
                       <div key={idx} className="bg-white rounded-lg p-4 flex flex-col sm:flex-row justify-between sm:items-center border border-slate-200 gap-4">
                         <div>
@@ -748,7 +783,7 @@ export const RecipesPage: React.FC = () => {
                             )}
                             <span className="text-slate-300 hidden sm:inline">•</span>
                             <span className={`text-xs ${hasDiscrepancy ? 'line-through text-slate-400' : 'text-slate-500'}`}>
-                              {ing.purchasePrice && ing.purchaseQuantity && ing.purchaseUnit 
+                              {ing.purchasePrice && ing.purchaseQuantity && ing.purchaseUnit
                                 ? `${ing.purchasePrice}€ / ${ing.purchaseQuantity} ${ing.purchaseUnit}`
                                 : `${ing.costPerUnit.toFixed(4)}€ / ${ing.unit}`}
                             </span>
@@ -784,7 +819,7 @@ export const RecipesPage: React.FC = () => {
                   {selectedDish.subRecipes.map((sub, idx) => {
                     const subCost = sub.quantity * sub.costPerUnit;
                     const percentage = totalCost > 0 ? (subCost / totalCost) * 100 : 0;
-                    
+
                     return (
                       <div key={idx} className="bg-slate-50 rounded-lg p-4 flex justify-between items-center border border-slate-200">
                         <div>
@@ -850,7 +885,7 @@ export const RecipesPage: React.FC = () => {
                   {selectedDish.indirectCosts.map((ic, idx) => {
                     const icCost = ic.type === 'fixed' ? ic.value : directCost * (ic.value / 100);
                     const percentage = totalCost > 0 ? (icCost / totalCost) * 100 : 0;
-                    
+
                     return (
                       <div key={idx} className="bg-slate-50 rounded-lg p-4 flex justify-between items-center border border-slate-200">
                         <div>
@@ -874,7 +909,7 @@ export const RecipesPage: React.FC = () => {
 
         {/* Footer Actions */}
         <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row gap-3 sm:gap-4">
-          <button 
+          <button
             onClick={async () => {
               setIsGeneratingPdf(true);
               try {
@@ -898,7 +933,7 @@ export const RecipesPage: React.FC = () => {
             )}
             {isGeneratingPdf ? 'Generando...' : 'Exportar Ficha (PDF)'}
           </button>
-          <button 
+          <button
             onClick={resetView}
             className="flex-1 bg-[#1e293b] hover:bg-slate-800 active:scale-95 text-white py-3 rounded-lg font-medium transition-all"
           >
@@ -915,13 +950,13 @@ export const RecipesPage: React.FC = () => {
                 Estás a punto de eliminar "{selectedDish?.name}". Esta acción no se puede deshacer.
               </p>
               <div className="flex justify-end gap-3">
-                <button 
+                <button
                   onClick={() => setShowDeleteConfirm(false)}
                   className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   onClick={handleDeleteDish}
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
                 >
@@ -943,9 +978,8 @@ export const RecipesPage: React.FC = () => {
 
   return (
     <div
-      className={`max-w-5xl mx-auto w-full min-h-screen ${
-        hasFloatingFooter ? 'pb-24' : 'pb-6 md:pb-8'
-      }`}
+      className={`max-w-5xl mx-auto w-full min-h-screen ${hasFloatingFooter ? 'pb-24' : 'pb-6 md:pb-8'
+        }`}
     >
       {view === 'result' ? (
         renderResult()
@@ -953,13 +987,13 @@ export const RecipesPage: React.FC = () => {
         <div className="w-full max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[calc(100vh-220px)] md:min-h-[calc(100vh-280px)]">
           {/* Tabs */}
           <div className="flex border-b border-slate-200">
-            <button 
+            <button
               className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'traditional' ? 'bg-[#1e293b] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
               onClick={() => setActiveTab('traditional')}
             >
               Mis Platos
             </button>
-            <button 
+            <button
               className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'custom' ? 'bg-[#1e293b] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
               onClick={() => {
                 if (activeTab !== 'custom') {
@@ -976,7 +1010,7 @@ export const RecipesPage: React.FC = () => {
             {activeTab === 'traditional' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {dishes.map((dish) => (
-                  <div 
+                  <div
                     key={dish.id}
                     onClick={() => handleCalculateTraditional(dish)}
                     className="group bg-white border border-slate-200 rounded-xl p-5 cursor-pointer hover:border-[#06b6d4] hover:shadow-md transition-all flex flex-col items-center text-center"
@@ -1008,8 +1042,8 @@ export const RecipesPage: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del Plato</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={dishName}
                         onChange={(e) => setDishName(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
@@ -1018,7 +1052,7 @@ export const RecipesPage: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Raciones que rinde</label>
-                      <input 
+                      <input
                         type="number" inputMode="decimal"
                         min="1"
                         value={dishPortions || ''}
@@ -1050,7 +1084,7 @@ export const RecipesPage: React.FC = () => {
                       </div>
                     </div>
                   </h3>
-                  
+
                   {customIngredients.length > 0 && (
                     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
                       <div className="overflow-x-auto">
@@ -1068,30 +1102,31 @@ export const RecipesPage: React.FC = () => {
                             {customIngredients.map((ing, idx) => {
                               const catItem = catalog.find(c => c.id === ing.catalogId);
                               return (
-                              <tr key={idx}>
-                                <td className="p-3 font-medium text-slate-800">{catItem?.name || 'Desconocido'}</td>
-                                <td className="p-3 text-slate-600">{ing.quantity} {ing.unit}</td>
-                                <td className="p-3 text-slate-600">
-                                  {ing.purchasePrice && ing.purchaseQuantity && ing.purchaseUnit 
-                                    ? <>{ing.purchasePrice}€ / {ing.purchaseQuantity} {ing.purchaseUnit} <span className="text-[10px] text-slate-400 block">({ing.costPerUnit.toFixed(4)}€/{ing.unit})</span></>
-                                    : `${ing.costPerUnit.toFixed(4)}€ / ${ing.unit}`}
-                                  <span className="text-[10px] text-slate-500 block mt-1">
-                                    {ing.priceSource === 'manual'
-                                      ? 'Manual'
-                                      : (ing.consumeStock === false ? 'Inventario (no consume)' : 'Inventario (consume)')}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-amber-600">{ing.wastePercentage}%</td>
-                                <td className="p-3">
-                                  <button 
-                                    onClick={() => setCustomIngredients(customIngredients.filter((_, i) => i !== idx))}
-                                    className="text-slate-400 hover:text-red-500 transition-colors p-2"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </td>
-                              </tr>
-                            )})}
+                                <tr key={idx}>
+                                  <td className="p-3 font-medium text-slate-800">{catItem?.name || 'Desconocido'}</td>
+                                  <td className="p-3 text-slate-600">{ing.quantity} {ing.unit}</td>
+                                  <td className="p-3 text-slate-600">
+                                    {ing.purchasePrice && ing.purchaseQuantity && ing.purchaseUnit
+                                      ? <>{ing.purchasePrice}€ / {ing.purchaseQuantity} {ing.purchaseUnit} <span className="text-[10px] text-slate-400 block">({ing.costPerUnit.toFixed(4)}€/{ing.unit})</span></>
+                                      : `${ing.costPerUnit.toFixed(4)}€ / ${ing.unit}`}
+                                    <span className="text-[10px] text-slate-500 block mt-1">
+                                      {ing.priceSource === 'manual'
+                                        ? 'Manual'
+                                        : (ing.consumeStock === false ? 'Inventario (no consume)' : 'Inventario (consume)')}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-amber-600">{ing.wastePercentage}%</td>
+                                  <td className="p-3">
+                                    <button
+                                      onClick={() => setCustomIngredients(customIngredients.filter((_, i) => i !== idx))}
+                                      className="text-slate-400 hover:text-red-500 transition-colors p-2"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -1102,14 +1137,13 @@ export const RecipesPage: React.FC = () => {
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-2">
                         <label className="block text-sm font-medium text-slate-700">Nombre del ingrediente</label>
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setShowInventoryPicker(!showInventoryPicker)}
-                          className={`text-xs font-medium px-2 py-1 rounded-md transition-all flex items-center gap-1.5 ${
-                            showInventoryPicker 
-                              ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' 
+                          className={`text-xs font-medium px-2 py-1 rounded-md transition-all flex items-center gap-1.5 ${showInventoryPicker
+                              ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
                               : 'bg-[#06b6d4]/10 text-[#06b6d4] hover:bg-[#06b6d4]/20'
-                          }`}
+                            }`}
                         >
                           {showInventoryPicker ? (
                             <><X size={14} /> Cerrar catálogo</>
@@ -1118,7 +1152,7 @@ export const RecipesPage: React.FC = () => {
                           )}
                         </button>
                       </div>
-                      
+
                       <input
                         type="text" required
                         value={ingredientSearch}
@@ -1177,7 +1211,7 @@ export const RecipesPage: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Bloque 1: Uso en receta */}
                       <div className="bg-white p-4 rounded-lg border border-slate-200">
@@ -1185,7 +1219,7 @@ export const RecipesPage: React.FC = () => {
                         <div className="grid grid-cols-3 gap-3">
                           <div className="col-span-1">
                             <label className="block text-xs font-medium text-slate-500 mb-1">Cantidad</label>
-                            <input 
+                            <input
                               type="number" inputMode="decimal" required min="0" step="any"
                               value={newQuantity} onChange={e => setNewQuantity(e.target.value)}
                               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
@@ -1194,7 +1228,7 @@ export const RecipesPage: React.FC = () => {
                           </div>
                           <div className="col-span-1">
                             <label className="block text-xs font-medium text-slate-500 mb-1">Unidad</label>
-                            <select 
+                            <select
                               value={newUnit} onChange={e => {
                                 setNewUnit(e.target.value);
                                 // Smart defaults
@@ -1213,7 +1247,7 @@ export const RecipesPage: React.FC = () => {
                           </div>
                           <div className="col-span-1">
                             <label className="block text-xs font-medium text-slate-500 mb-1">Merma (%)</label>
-                            <input 
+                            <input
                               type="number" inputMode="decimal" min="0" max="99"
                               value={newWaste} onChange={e => setNewWaste(e.target.value)}
                               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
@@ -1229,15 +1263,14 @@ export const RecipesPage: React.FC = () => {
                         <div className="grid grid-cols-3 gap-3">
                           <div className="col-span-1">
                             <label className="block text-xs font-medium text-slate-500 mb-1">Precio (€)</label>
-                            <input 
+                            <input
                               type="number" inputMode="decimal" required min="0" step="any"
                               value={newPurchasePrice} onChange={e => setNewPurchasePrice(e.target.value)}
                               disabled={priceLocked}
-                              className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] ${
-                                priceLocked
+                              className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] ${priceLocked
                                   ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
                                   : 'border-slate-300'
-                              }`}
+                                }`}
                               placeholder="0.00"
                             />
                             <div className="min-h-[16px] mt-1">
@@ -1248,7 +1281,7 @@ export const RecipesPage: React.FC = () => {
                           </div>
                           <div className="col-span-1">
                             <label className="block text-xs font-medium text-slate-500 mb-1">Cantidad</label>
-                            <input 
+                            <input
                               type="number" inputMode="decimal" required min="0.001" step="any"
                               value={newPurchaseQuantity} onChange={e => setNewPurchaseQuantity(e.target.value)}
                               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
@@ -1257,7 +1290,7 @@ export const RecipesPage: React.FC = () => {
                           </div>
                           <div className="col-span-1">
                             <label className="block text-xs font-medium text-slate-500 mb-1">Unidad</label>
-                            <select 
+                            <select
                               value={newPurchaseUnit} onChange={e => setNewPurchaseUnit(e.target.value)}
                               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] bg-white"
                             >
@@ -1271,14 +1304,13 @@ export const RecipesPage: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="mt-4 space-y-3 bg-slate-100 p-3 rounded-lg border border-slate-200">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <label className={`relative inline-flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${
-                          isFromCatalog
+                        <label className={`relative inline-flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${isFromCatalog
                             ? 'bg-white/80 border-slate-300 hover:border-[#06b6d4] cursor-pointer'
                             : 'bg-slate-100/50 border-slate-200 cursor-not-allowed opacity-50'
-                        }`}>
+                          }`}>
                           <span className="text-sm font-medium text-slate-700">Usar precio del inventario (WAC)</span>
                           <input
                             type="checkbox"
@@ -1291,17 +1323,15 @@ export const RecipesPage: React.FC = () => {
                               if (!checked) setConsumeStock(false);
                             }}
                           />
-                          <span className={`relative w-11 h-6 rounded-full transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5 shadow-sm ${
-                            !isFromCatalog ? 'bg-slate-200' : 'bg-slate-300 peer-checked:bg-[#06b6d4]'
-                          }`} />
+                          <span className={`relative w-11 h-6 rounded-full transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5 shadow-sm ${!isFromCatalog ? 'bg-slate-200' : 'bg-slate-300 peer-checked:bg-[#06b6d4]'
+                            }`} />
                         </label>
 
                         <label
-                          className={`relative inline-flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${
-                            useInventoryPrice
+                          className={`relative inline-flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${useInventoryPrice
                               ? 'bg-white/80 border-slate-300 hover:border-[#06b6d4] cursor-pointer'
                               : 'bg-slate-100/50 border-slate-200 cursor-not-allowed opacity-50'
-                          }`}
+                            }`}
                           title="Si está desactivado, este ingrediente no afectará el stock al producir."
                         >
                           <span className="text-sm font-medium text-slate-700">Consumir del inventario</span>
@@ -1322,55 +1352,55 @@ export const RecipesPage: React.FC = () => {
                       )}
 
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                      {/* Real-time preview */}
-                      <div className="text-sm flex-1">
-                        {newQuantity && newPurchasePrice && newPurchaseQuantity ? (
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
-                            <span className="text-slate-500 font-medium">Coste en receta:</span>
-                            <span className="font-bold text-slate-800 text-lg">
-                              {(() => {
-                                try {
-                                  const pPrice = parseFloat(newPurchasePrice);
-                                  const pQty = parseFloat(newPurchaseQuantity);
-                                  const uQty = parseFloat(newQuantity);
-                                  const purchaseQtyInUsageUnit = convertUnit(pQty, newPurchaseUnit as any, newUnit as any);
-                                  const costPerUsageUnit = pPrice / purchaseQtyInUsageUnit;
-                                  
-                                  const costElement = (costPerUsageUnit * uQty).toFixed(2) + '€';
-                                  const isSuspiciousPrice = (newPurchaseUnit === 'g' || newPurchaseUnit === 'ml') && (pPrice / pQty) > 0.5;
+                        {/* Real-time preview */}
+                        <div className="text-sm flex-1">
+                          {newQuantity && newPurchasePrice && newPurchaseQuantity ? (
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                              <span className="text-slate-500 font-medium">Coste en receta:</span>
+                              <span className="font-bold text-slate-800 text-lg">
+                                {(() => {
+                                  try {
+                                    const pPrice = parseFloat(newPurchasePrice);
+                                    const pQty = parseFloat(newPurchaseQuantity);
+                                    const uQty = parseFloat(newQuantity);
+                                    const purchaseQtyInUsageUnit = convertUnit(pQty, newPurchaseUnit as any, newUnit as any);
+                                    const costPerUsageUnit = pPrice / purchaseQtyInUsageUnit;
 
-                                  return (
-                                    <div className="flex items-center gap-2">
-                                      {costElement}
-                                      {isSuspiciousPrice && (
-                                        <div className="group relative flex items-center">
-                                          <span className="text-amber-500 cursor-help">⚠️</span>
-                                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-3 bg-slate-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 shadow-xl font-normal leading-relaxed text-center">
-                                            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
-                                            ¿Seguro que el precio es por {newPurchaseUnit}? Normalmente se compra por {newPurchaseUnit === 'g' ? 'kg' : 'litro'}.
+                                    const costElement = (costPerUsageUnit * uQty).toFixed(2) + '€';
+                                    const isSuspiciousPrice = (newPurchaseUnit === 'g' || newPurchaseUnit === 'ml') && (pPrice / pQty) > 0.5;
+
+                                    return (
+                                      <div className="flex items-center gap-2">
+                                        {costElement}
+                                        {isSuspiciousPrice && (
+                                          <div className="group relative flex items-center">
+                                            <span className="text-amber-500 cursor-help">⚠️</span>
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-3 bg-slate-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 shadow-xl font-normal leading-relaxed text-center">
+                                              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+                                              ¿Seguro que el precio es por {newPurchaseUnit}? Normalmente se compra por {newPurchaseUnit === 'g' ? 'kg' : 'litro'}.
+                                            </div>
                                           </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                } catch (e) {
-                                  return <span className="text-red-500 text-sm font-normal">Unidades incompatibles</span>;
-                                }
-                              })()}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Rellena cantidad y precio para ver el coste...</span>
-                        )}
-                      </div>
-                      
-                      <button 
-                        type="submit"
-                        className="bg-[#06b6d4] hover:bg-cyan-600 text-white px-6 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full sm:w-auto shadow-sm"
-                      >
-                        <Plus size={18} />
-                        Añadir
-                      </button>
+                                        )}
+                                      </div>
+                                    );
+                                  } catch (e) {
+                                    return <span className="text-red-500 text-sm font-normal">Unidades incompatibles</span>;
+                                  }
+                                })()}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Rellena cantidad y precio para ver el coste...</span>
+                          )}
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="bg-[#06b6d4] hover:bg-cyan-600 text-white px-6 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full sm:w-auto shadow-sm"
+                        >
+                          <Plus size={18} />
+                          Añadir
+                        </button>
                       </div>
                     </div>
                   </form>
@@ -1389,7 +1419,7 @@ export const RecipesPage: React.FC = () => {
                       </div>
                     </div>
                   </h3>
-                  
+
                   {customSubRecipes.length > 0 && (
                     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
                       <div className="overflow-x-auto">
@@ -1405,9 +1435,9 @@ export const RecipesPage: React.FC = () => {
                             {customSubRecipes.map((sub, idx) => {
                               const baseDish = dishes.find(d => d.id === sub.dishId);
                               const isExpanded = expandedSubRecipeIdx === idx;
-                              
+
                               // El cálculo se hace aquí de forma memoizada o directa dado que el factor es simple
-                              const breakdown = isExpanded && baseDish 
+                              const breakdown = isExpanded && baseDish
                                 ? getScaledDishBreakdown(baseDish, sub.quantity, stockProjection, catalog)
                                 : null;
 
@@ -1416,7 +1446,7 @@ export const RecipesPage: React.FC = () => {
                                   <tr className={`transition-colors ${isExpanded ? 'bg-slate-50/80' : 'hover:bg-slate-50/50'}`}>
                                     <td className="p-3 font-medium text-slate-800">
                                       <div className="flex items-center gap-2">
-                                        <button 
+                                        <button
                                           type="button"
                                           onClick={() => setExpandedSubRecipeIdx(isExpanded ? null : idx)}
                                           className={`p-1.5 rounded-md transition-all ${isExpanded ? 'bg-[#06b6d4] text-white shadow-sm' : 'text-[#06b6d4] hover:bg-[#06b6d4]/10'}`}
@@ -1431,7 +1461,7 @@ export const RecipesPage: React.FC = () => {
                                       {sub.quantity} <span className="text-[10px] text-slate-400 font-normal">raciones</span>
                                     </td>
                                     <td className="p-3 text-right">
-                                      <button 
+                                      <button
                                         type="button"
                                         onClick={() => {
                                           setCustomSubRecipes(customSubRecipes.filter((_, i) => i !== idx));
@@ -1455,7 +1485,7 @@ export const RecipesPage: React.FC = () => {
                                               Coste Base: {sub.costPerUnit.toFixed(2)}€/ud
                                             </span>
                                           </div>
-                                          
+
                                           <div className="space-y-1.5">
                                             {breakdown.items.map((item, iIdx) => (
                                               <div key={iIdx} className="flex justify-between items-center group">
@@ -1473,14 +1503,14 @@ export const RecipesPage: React.FC = () => {
                                                 </div>
                                               </div>
                                             ))}
-                                            
+
                                             {breakdown.indirectCost > 0 && (
                                               <div className="flex justify-between items-center pt-1 text-[#06b6d4] italic">
                                                 <span>+ Costes Indirectos Proporcionales</span>
                                                 <span className="font-medium tabular-nums">{breakdown.indirectCost.toFixed(2)}€</span>
                                               </div>
                                             )}
-                                            
+
                                             <div className="flex justify-between items-center pt-2 mt-2 border-t border-slate-200 font-bold text-slate-800 text-xs">
                                               <span>Total Aportado al Escandallo</span>
                                               <span className="text-sm tracking-tight">{breakdown.totalCost.toFixed(2)}€</span>
@@ -1502,7 +1532,7 @@ export const RecipesPage: React.FC = () => {
                   <form onSubmit={handleAddSubRecipe} className="bg-slate-50 p-4 rounded-xl border border-slate-100 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                     <div className="sm:col-span-7">
                       <label className="block text-xs font-medium text-slate-500 mb-1">Receta Base</label>
-                      <select 
+                      <select
                         value={newSubRecipeId} onChange={e => setNewSubRecipeId(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] bg-white"
                         required
@@ -1515,7 +1545,7 @@ export const RecipesPage: React.FC = () => {
                     </div>
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-medium text-slate-500 mb-1">Raciones a usar</label>
-                      <input 
+                      <input
                         type="number" inputMode="decimal" required min="0.1" step="any"
                         value={newSubRecipeQty} onChange={e => setNewSubRecipeQty(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
@@ -1543,19 +1573,19 @@ export const RecipesPage: React.FC = () => {
                       </div>
                     </div>
                   </h3>
-                  
+
                   {customVariants.map((group, gIdx) => (
                     <div key={gIdx} className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
                       <div className="bg-slate-50 p-3 border-b border-slate-200 flex justify-between items-center">
                         <span className="font-bold text-slate-700">{group.name}</span>
                         <div className="flex gap-2">
-                          <button 
+                          <button
                             onClick={() => setActiveVariantGroup(activeVariantGroup === group.name ? '' : group.name)}
                             className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors font-medium shadow-sm"
                           >
                             + Añadir Opción
                           </button>
-                          <button 
+                          <button
                             onClick={() => setCustomVariants(customVariants.filter((_, i) => i !== gIdx))}
                             className="text-slate-400 hover:text-red-500 p-1"
                           >
@@ -1563,7 +1593,7 @@ export const RecipesPage: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                      
+
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
                           <tbody className="divide-y divide-slate-100">
@@ -1574,7 +1604,7 @@ export const RecipesPage: React.FC = () => {
                                 <td className="p-3 text-slate-600">{opt.costPerUnit > 0 ? `${opt.costPerUnit}€/${opt.unit}` : '-'}</td>
                                 <td className="p-3 text-right">
                                   {oIdx > 0 && (
-                                    <button 
+                                    <button
                                       onClick={() => {
                                         const newVariants = [...customVariants];
                                         newVariants[gIdx].options = newVariants[gIdx].options.filter((_, i) => i !== oIdx);
@@ -1596,21 +1626,21 @@ export const RecipesPage: React.FC = () => {
                         <div className="p-3 bg-blue-50/50 border-t border-slate-100">
                           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                             <div className="sm:col-span-4">
-                              <input 
+                              <input
                                 type="text" placeholder="Nombre opción"
                                 value={newVariantOptionName} onChange={e => setNewVariantOptionName(e.target.value)}
                                 className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
                               />
                             </div>
                             <div className="sm:col-span-2">
-                              <input 
+                              <input
                                 type="number" inputMode="decimal" placeholder="Cant." min="0" step="any"
                                 value={newVariantOptionQty} onChange={e => setNewVariantOptionQty(e.target.value)}
                                 className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
                               />
                             </div>
                             <div className="sm:col-span-2">
-                              <select 
+                              <select
                                 value={newVariantOptionUnit} onChange={e => setNewVariantOptionUnit(e.target.value)}
                                 className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm bg-white"
                               >
@@ -1622,14 +1652,14 @@ export const RecipesPage: React.FC = () => {
                               </select>
                             </div>
                             <div className="sm:col-span-3">
-                              <input 
+                              <input
                                 type="number" inputMode="decimal" placeholder="Coste/Ud" min="0" step="any"
                                 value={newVariantOptionCost} onChange={e => setNewVariantOptionCost(e.target.value)}
                                 className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
                               />
                             </div>
                             <div className="sm:col-span-1">
-                              <button 
+                              <button
                                 onClick={() => handleAddVariantOption(group.name)}
                                 className="w-full bg-[#06b6d4] text-white p-1.5 rounded-md flex justify-center"
                               >
@@ -1644,32 +1674,30 @@ export const RecipesPage: React.FC = () => {
 
                   <form onSubmit={handleAddVariantGroup} className="flex gap-2">
                     <div className="flex-1 flex flex-col gap-1">
-                      <input 
+                      <input
                         ref={variantGroupInputRef}
-                        type="text" 
-                        value={newVariantGroupName} 
+                        type="text"
+                        value={newVariantGroupName}
                         onChange={e => {
                           setNewVariantGroupName(e.target.value);
                           if (variantGroupError) setVariantGroupError(false);
                         }}
-                        className={`w-full border rounded-lg px-4 py-2 text-sm focus:ring-2 transition-all ${
-                          variantGroupError 
-                          ? 'border-red-400 bg-red-50 ring-red-100 focus:ring-red-400 placeholder:text-red-400' 
-                          : 'border-slate-300 focus:ring-[#06b6d4]'
-                        }`}
+                        className={`w-full border rounded-lg px-4 py-2 text-sm focus:ring-2 transition-all ${variantGroupError
+                            ? 'border-red-400 bg-red-50 ring-red-100 focus:ring-red-400 placeholder:text-red-400'
+                            : 'border-slate-300 focus:ring-[#06b6d4]'
+                          }`}
                         placeholder={variantGroupError ? "Introduce un nombre para el grupo..." : "Nueva categoría de variante (ej. Tipo de Arroz)"}
                       />
                       {variantGroupError && (
                         <span className="text-[10px] text-red-500 font-medium ml-1">El nombre del grupo es obligatorio</span>
                       )}
                     </div>
-                    <button 
-                      type="submit" 
-                      className={`h-fit px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                        variantGroupError 
-                        ? 'bg-red-500 text-white shadow-lg shadow-red-200' 
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
+                    <button
+                      type="submit"
+                      className={`h-fit px-4 py-2 rounded-lg text-sm font-medium transition-all ${variantGroupError
+                          ? 'bg-red-500 text-white shadow-lg shadow-red-200'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
                     >
                       Añadir Grupo
                     </button>
@@ -1689,7 +1717,7 @@ export const RecipesPage: React.FC = () => {
                       </div>
                     </div>
                   </h3>
-                  
+
                   {customIndirectCosts.length > 0 && (
                     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
                       <table className="w-full text-left text-sm">
@@ -1701,7 +1729,7 @@ export const RecipesPage: React.FC = () => {
                                 {ic.type === 'percentage' ? `${ic.value}% sobre coste` : `${ic.value}€ fijo`}
                               </td>
                               <td className="p-3 text-right">
-                                <button 
+                                <button
                                   onClick={() => setCustomIndirectCosts(customIndirectCosts.filter((_, i) => i !== idx))}
                                   className="text-slate-400 hover:text-red-500 transition-colors p-1"
                                 >
@@ -1718,7 +1746,7 @@ export const RecipesPage: React.FC = () => {
                   <form onSubmit={handleAddIndirectCost} className="bg-slate-50 p-4 rounded-xl border border-slate-100 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                     <div className="sm:col-span-5">
                       <label className="block text-xs font-medium text-slate-500 mb-1">Concepto</label>
-                      <input 
+                      <input
                         type="text" required
                         value={newIcName} onChange={e => setNewIcName(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
@@ -1727,7 +1755,7 @@ export const RecipesPage: React.FC = () => {
                     </div>
                     <div className="sm:col-span-3">
                       <label className="block text-xs font-medium text-slate-500 mb-1">Tipo</label>
-                      <select 
+                      <select
                         value={newIcType} onChange={e => setNewIcType(e.target.value as any)}
                         className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] bg-white"
                       >
@@ -1737,7 +1765,7 @@ export const RecipesPage: React.FC = () => {
                     </div>
                     <div className="sm:col-span-3">
                       <label className="block text-xs font-medium text-slate-500 mb-1">Valor</label>
-                      <input 
+                      <input
                         type="number" inputMode="decimal" required min="0" step="any"
                         value={newIcValue} onChange={e => setNewIcValue(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4]"
@@ -1751,7 +1779,7 @@ export const RecipesPage: React.FC = () => {
                     </div>
                   </form>
                 </div>
-                
+
                 {/* Operational Info & versioning */}
                 <div className="mb-8 bg-slate-50 p-6 rounded-xl border border-slate-100">
                   <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -1762,7 +1790,7 @@ export const RecipesPage: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div>
                         <label className="block text-xs font-medium text-slate-500 mb-1">Versión del Escandallo</label>
-                        <input 
+                        <input
                           type="text" value={dishVersion} onChange={e => setDishVersion(e.target.value)}
                           className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] bg-white"
                           placeholder="Ej. 1.0.0"
@@ -1771,7 +1799,7 @@ export const RecipesPage: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Instrucciones de Preparación</label>
-                      <textarea 
+                      <textarea
                         rows={4}
                         value={instructions} onChange={e => setInstructions(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#06b6d4]"
@@ -1780,7 +1808,7 @@ export const RecipesPage: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Notas Internas (No visibles en cocina)</label>
-                      <textarea 
+                      <textarea
                         rows={2}
                         value={notes} onChange={e => setNotes(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#06b6d4]"
@@ -1798,12 +1826,12 @@ export const RecipesPage: React.FC = () => {
                   </h3>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
-                      'Gluten', 'Crustáceos', 'Huevos', 'Pescado', 'Cacahuetes', 'Soja', 'Lácteos', 
+                      'Gluten', 'Crustáceos', 'Huevos', 'Pescado', 'Cacahuetes', 'Soja', 'Lácteos',
                       'Frutos secos', 'Apio', 'Mostaza', 'Sésamo', 'Sulfitos', 'Altramuces', 'Moluscos'
                     ].map(alg => (
                       <label key={alg} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${dishAllergens[alg] ? 'bg-amber-50 border-amber-200 text-amber-900 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           className="w-4 h-4 accent-amber-600"
                           checked={!!dishAllergens[alg]}
                           onChange={(e) => setDishAllergens({ ...dishAllergens, [alg]: e.target.checked })}
@@ -1816,7 +1844,7 @@ export const RecipesPage: React.FC = () => {
 
                 {/* Calculate Button */}
                 <div className="flex justify-end pt-4">
-                  <button 
+                  <button
                     onClick={handleSaveAndCalculate}
                     disabled={!dishName || dishPortions <= 0 || (customIngredients.length === 0 && customSubRecipes.length === 0)}
                     className="w-full sm:w-auto bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl font-medium transition-all shadow-md"
@@ -1839,13 +1867,13 @@ export const RecipesPage: React.FC = () => {
                 Vista Previa de Ficha
               </h2>
               <div className="hidden sm:flex bg-slate-800 p-1 rounded-lg border border-slate-700">
-                <button 
+                <button
                   onClick={() => setPdfViewMode('kitchen')}
                   className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${pdfViewMode === 'kitchen' ? 'bg-[#06b6d4] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                 >
                   Modo Cocina
                 </button>
-                <button 
+                <button
                   onClick={() => setPdfViewMode('manager')}
                   className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${pdfViewMode === 'manager' ? 'bg-[#06b6d4] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                 >
@@ -1863,7 +1891,7 @@ export const RecipesPage: React.FC = () => {
                   loading ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} />
                 )}
               </PDFDownloadLink>
-              <button 
+              <button
                 onClick={() => setShowPdfPreview(false)}
                 className="p-2 hover:bg-slate-700 rounded-full transition-colors"
                 title="Cerrar"
@@ -1874,13 +1902,13 @@ export const RecipesPage: React.FC = () => {
           </div>
 
           <div className="sm:hidden flex bg-[#1e293b] p-2 gap-2 border-b border-slate-700">
-            <button 
+            <button
               onClick={() => setPdfViewMode('kitchen')}
               className={`flex-1 py-2 rounded-md text-xs font-bold ${pdfViewMode === 'kitchen' ? 'bg-[#06b6d4] text-white' : 'bg-slate-800 text-slate-400'}`}
             >
               COCINA
             </button>
-            <button 
+            <button
               onClick={() => setPdfViewMode('manager')}
               className={`flex-1 py-2 rounded-md text-xs font-bold ${pdfViewMode === 'manager' ? 'bg-[#06b6d4] text-white' : 'bg-slate-800 text-slate-400'}`}
             >
@@ -1898,13 +1926,13 @@ export const RecipesPage: React.FC = () => {
               </div>
             ) : (
               /* Compact View: Professional Fallback for Mobile/Small tablets */
-              <MobilePDFFallback 
-                document={pdfDocument!} 
+              <MobilePDFFallback
+                document={pdfDocument!}
                 fileName={`Ficha_${pdfData.identity.name.replace(/\s+/g, '_')}_${pdfViewMode}.pdf`}
               />
             )}
           </div>
-          
+
           <div className="p-4 bg-slate-900 border-t border-slate-800 text-center">
             <p className="text-slate-500 text-xs">
               Optimizado para impresión B&N. Los alérgenos y el QR son obligatorios para cumplimiento legal y trazabilidad.

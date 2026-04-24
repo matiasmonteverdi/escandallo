@@ -5,7 +5,8 @@ import { computeStockProjection } from '../services/inventory.service';
 import { calculateDishCost } from '../App';
 import { normalizeQuantity, formatCostForDisplay, formatQuantityForDisplay, formatNumber } from '../domain/units';
 import { BaseUnit } from '../domain/types';
-
+import { Card } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
 
 interface DashboardPageProps {
   onNavigate: (page: string) => void;
@@ -17,7 +18,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   const inventorySnapshots = useAppStore(state => state.inventorySnapshots);
   const productions = useAppStore(state => state.productions);
   const catalog = useAppStore(state => state.catalog);
-  
+
   // Calculate current stock
   const latestSnapshot = inventorySnapshots.length > 0 ? inventorySnapshots[inventorySnapshots.length - 1] : null;
   const stockProjection = computeStockProjection(inventoryEvents, latestSnapshot);
@@ -25,47 +26,35 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   // 1. CRITICAL ALERTS
   const alerts: { id: string, type: 'critical' | 'warning', message: string, cta: string, actionUrl: string }[] = [];
 
-  // A. Check for negative stock
   Object.entries(stockProjection).forEach(([name, data]) => {
     if (data.quantity <= 0) {
       const displayQty = formatQuantityForDisplay(data.quantity, data.unit as BaseUnit);
+      const catItem = catalog.find(c => c.id === name);
+      const displayName = catItem?.name || name;
       alerts.push({
         id: `out_${name}`,
         type: 'critical',
-        message: `Stock negativo o agotado: ${name} (${formatNumber(displayQty.value)} ${displayQty.unit})`,
-        cta: 'Registrar Compra / Ajuste',
+        message: `Agotado: ${displayName} (${formatNumber(displayQty.value)} ${displayQty.unit})`,
+        cta: 'Reponer',
         actionUrl: 'inventory'
       });
     }
   });
 
-  // B. Check for recipe cost deviations
-  const costDeviations: { dishName: string, variancePercent: number, manualCost: number, liveCost: number }[] = [];
-  
   dishes.forEach(dish => {
-    // We calculate "theoretical / manual" vs "live"
     const manualResult = calculateDishCost(dish, {}, {});
     const liveResult = calculateDishCost(dish, {}, stockProjection);
-    
-    // Total dish base cost
     const manualCost = manualResult.totalCost;
     const liveCost = liveResult.totalCost;
-    
+
     if (manualCost > 0) {
       const variance = ((liveCost - manualCost) / manualCost) * 100;
       if (Math.abs(variance) >= 5) {
-        costDeviations.push({
-          dishName: dish.name,
-          variancePercent: variance,
-          manualCost,
-          liveCost
-        });
-        
         alerts.push({
           id: `var_${dish.id}`,
           type: variance > 0 ? 'critical' : 'warning',
-          message: `Coste de "${dish.name}" ha ${variance > 0 ? 'subido' : 'bajado'} un ${Math.abs(variance).toFixed(1)}% debido al inventario en vivo.`,
-          cta: 'Revisar Escandallo',
+          message: `Desviación: "${dish.name}" (${variance > 0 ? '+' : ''}${variance.toFixed(1)}%)`,
+          cta: 'Revisar',
           actionUrl: 'recipes'
         });
       }
@@ -98,8 +87,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     }
   });
 
-  // 3. DONDE SE VA EL DINERO (Top Consumption & Top Expensive Dishes)
-  // Top ingredients by cost total invested right now
   const topInventoryValue = Object.entries(stockProjection)
     .map(([catId, data]) => {
       const catItem = catalog.find(c => c.id === catId);
@@ -108,166 +95,165 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     .filter(item => item.totalValue > 0)
     .sort((a, b) => b.totalValue - a.totalValue)
     .slice(0, 5);
-    
-  // Most expensive dishes (live cost per portion)
-  const topDishesByCost = [...dishes]
-    .map(d => {
-      const { costPerPortion } = calculateDishCost(d, {}, stockProjection);
-      return { name: d.name, cost: costPerPortion };
-    })
-    .sort((a, b) => b.cost - a.cost)
-    .slice(0, 5);
 
-  // 4. LATEST ACTIVITY
   const recentEvents = [...inventoryEvents]
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 5);
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full pb-24 space-y-8">
-      <div>
-        <h2 className="text-2xl font-serif font-bold text-slate-800">Centro de Control</h2>
-        <p className="text-slate-500 mt-1">¿Qué está pasando y qué debemos hacer hoy?</p>
-      </div>
+    <div className="p-3 md:p-8 max-w-6xl mx-auto w-full pb-24 space-y-6 md:space-y-10">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-serif font-bold text-slate-900">Control de Mando</h2>
+          <p className="text-slate-500 mt-1 font-medium">Estado real de tu operativa y costes.</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+          <Activity size={14} className="text-cyan-500" />
+          Live Update
+        </div>
+      </header>
 
-      {/* SHORTCUTS NATIVOS (SOLO MÓVIL) */}
+      {/* SHORTCUTS NATIVOS (SOLO MÓVIL) - Optimizados para pulgar */}
       <div className="md:hidden grid grid-cols-3 gap-3">
-        <button onClick={() => onNavigate('recipes')} className="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-[#06b6d4] focus:ring-offset-2">
-          <Utensils size={24} className="text-[#06b6d4] mb-2" />
-          <span className="text-xs font-bold text-slate-700">Recetas</span>
+        <button onClick={() => onNavigate('recipes')} className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-slate-200 shadow-soft active:scale-95 transition-all">
+          <Utensils size={24} className="text-cyan-600 mb-2" />
+          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tight">Escandallos</span>
         </button>
-        <button onClick={() => onNavigate('production')} className="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-[#06b6d4] focus:ring-offset-2">
-          <ClipboardList size={24} className="text-[#06b6d4] mb-2" />
-          <span className="text-xs font-bold text-slate-700">Producción</span>
+        <button onClick={() => onNavigate('production')} className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-slate-200 shadow-soft active:scale-95 transition-all">
+          <ClipboardList size={24} className="text-cyan-600 mb-2" />
+          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tight">Producción</span>
         </button>
-        <button onClick={() => onNavigate('inventory')} className="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-[#06b6d4] focus:ring-offset-2">
-          <Package size={24} className="text-[#06b6d4] mb-2" />
-          <span className="text-xs font-bold text-slate-700">Inventario</span>
+        <button onClick={() => onNavigate('inventory')} className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-slate-200 shadow-soft active:scale-95 transition-all">
+          <Package size={24} className="text-cyan-600 mb-2" />
+          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tight">Inventario</span>
         </button>
       </div>
 
-      {/* FILA 1: ALERTAS CRÍTICAS (ACTION BOARD) */}
+      {/* 1. ACCIONES REQUERIDAS (BENTO ALERTS) */}
       {alerts.length > 0 && (
         <section>
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <AlertCircle size={16} /> Alertas de Acción Inmediata
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Acciones Prioritarias</h3>
+            <div className="h-px flex-1 bg-slate-200"></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {alerts.map(alert => (
-              <div key={alert.id} className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                alert.type === 'critical' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 ${alert.type === 'critical' ? 'text-red-500' : 'text-amber-500'}`}>
+              <Card key={alert.id} className={`flex items-center justify-between p-3 border-l-4 ${alert.type === 'critical' ? 'border-l-red-500 bg-red-50/30' : 'border-l-amber-500 bg-amber-50/30'
+                }`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={alert.type === 'critical' ? 'text-red-500' : 'text-amber-500'}>
                     <AlertCircle size={20} />
                   </div>
-                  <div>
-                    <h4 className={`font-semibold ${alert.type === 'critical' ? 'text-red-800' : 'text-amber-800'}`}>
-                      {alert.type === 'critical' ? 'Requiere Atención' : 'Aviso'}
-                    </h4>
-                    <p className={`text-sm mt-0.5 ${alert.type === 'critical' ? 'text-red-700' : 'text-amber-700'}`}>
-                      {alert.message}
+                  <div className="truncate">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-tight">
+                      {alert.type === 'critical' ? 'Crítico' : 'Aviso'}
                     </p>
+                    <p className="text-sm font-semibold text-slate-800 truncate">{alert.message}</p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => onNavigate(alert.actionUrl)}
-                  className={`shrink-0 px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-colors active:scale-95 ${
-                  alert.type === 'critical' 
-                    ? 'bg-red-600 hover:bg-red-700 text-white' 
-                    : 'bg-amber-100 hover:bg-amber-200 text-amber-800'
-                }`}>
-                  {alert.cta}
+                  className={`shrink-0 p-2 rounded-xl active:scale-90 transition-transform ${alert.type === 'critical' ? 'bg-red-500 text-white' : 'bg-amber-100 text-amber-700'
+                    }`}
+                >
                   <ArrowRight size={16} />
                 </button>
-              </div>
+              </Card>
             ))}
           </div>
         </section>
       )}
 
-      {/* FILA 2: QUÉ ESTÁ PASANDO HOY (KPIs Operativos) */}
+      {/* 2. KPIs OPERATIVOS (BENTO GRID) */}
       <section>
-        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Activity size={16} /> Operaciones Hoy
-        </h3>
+        <div className="flex items-center gap-2 mb-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Métricas de Hoy</h3>
+          <div className="h-px flex-1 bg-slate-200"></div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-            <span className="text-sm font-medium text-slate-500 flex items-center gap-2 mb-2">
-              <Package size={16} className="text-[#06b6d4]" />
-              Compras / Gastos
-            </span>
-            <span className="text-3xl font-bold text-slate-800">{purchasesTodayAmount.toFixed(2)} €</span>
-            <span className="text-xs text-slate-400 mt-2">Valor entrado a cámara hoy</span>
-          </div>
-          
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-            <span className="text-sm font-medium text-slate-500 flex items-center gap-2 mb-2">
-              <TrendingUp size={16} className="text-amber-500" />
-              Coste Producción
-            </span>
-            <span className="text-3xl font-bold text-slate-800">{productionCostToday.toFixed(2)} €</span>
-            <span className="text-xs text-slate-400 mt-2">Coste real consumido hoy</span>
-          </div>
+          <Card className="p-6 flex flex-col justify-between group">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600 group-hover:bg-emerald-100 transition-colors">
+                <Package size={20} />
+              </div>
+              <Badge type="neutral">Entradas</Badge>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-slate-900">{purchasesTodayAmount.toFixed(2)} €</p>
+              <p className="text-xs font-medium text-slate-500 mt-1 uppercase tracking-wider">Inversión en Cámara</p>
+            </div>
+          </Card>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-            <span className="text-sm font-medium text-slate-500 flex items-center gap-2 mb-2">
-              <ClipboardList size={16} className="text-green-500" />
-              Producción (Raciones)
-            </span>
-            <span className="text-3xl font-bold text-slate-800">{portionsProducedToday}</span>
-            <span className="text-xs text-slate-400 mt-2">Salidas de recetas facturadas</span>
-          </div>
+          <Card className="p-6 flex flex-col justify-between group">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-2 bg-amber-50 rounded-lg text-amber-600 group-hover:bg-amber-100 transition-colors">
+                <TrendingUp size={20} />
+              </div>
+              <Badge type="inventory-no-consume">Consumo</Badge>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-slate-900">{productionCostToday.toFixed(2)} €</p>
+              <p className="text-xs font-medium text-slate-500 mt-1 uppercase tracking-wider">Coste Producción Real</p>
+            </div>
+          </Card>
+
+          <Card className="p-6 flex flex-col justify-between group">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-2 bg-cyan-50 rounded-lg text-cyan-600 group-hover:bg-cyan-100 transition-colors">
+                <ClipboardList size={20} />
+              </div>
+              <Badge type="info">Volumen</Badge>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-slate-900">{portionsProducedToday}</p>
+              <p className="text-xs font-medium text-slate-500 mt-1 uppercase tracking-wider">Raciones Producidas</p>
+            </div>
+          </Card>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* FILA 3: DONDE SE VA EL DINERO */}
-        <section>
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <DollarSign size={16} /> Dónde se va el dinero
-          </h3>
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-4 border-b border-slate-100 bg-slate-50">
-              <h4 className="font-bold text-slate-800 text-sm">Capital Inmovilizado (Top 5 Ingredientes)</h4>
-            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-10">
+        {/* 3. CAPITAL INMOVILIZADO */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Inmovilizado Top 5</h3>
+            <div className="h-px flex-1 bg-slate-200"></div>
+          </div>
+          <Card className="overflow-hidden">
             <ul className="divide-y divide-slate-100">
               {topInventoryValue.map((item, idx) => {
                 const qty = formatQuantityForDisplay(item.data.quantity, item.data.unit as BaseUnit);
                 return (
-                  <li key={item.catId} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                  <li key={item.catId} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-bold">
-                        {idx + 1}
-                      </div>
+                      <span className="text-lg font-serif italic text-slate-300 w-4">{idx + 1}</span>
                       <div>
-                        <p className="font-medium text-slate-800 text-sm">{item.name}</p>
-                        <p className="text-xs text-slate-500">{Number(qty.value.toFixed(2))} {qty.unit} en cámara</p>
+                        <p className="font-bold text-slate-800 text-sm">{item.name}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{formatNumber(qty.value)} {qty.unit} en stock</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-slate-800 text-sm">{item.totalValue.toFixed(2)} €</p>
+                      <p className="font-bold text-slate-900 text-sm">{item.totalValue.toFixed(2)} €</p>
                     </div>
                   </li>
-                 );
+                );
               })}
               {topInventoryValue.length === 0 && (
-                <li className="p-6 text-center text-slate-500 text-sm">Sin datos de inventario.</li>
+                <li className="p-10 text-center">
+                  <p className="text-slate-400 text-sm italic font-medium">Sin stock registrado.</p>
+                </li>
               )}
             </ul>
-          </div>
+          </Card>
         </section>
 
-        {/* FILA 4: ACTIVIDAD (Ledger Log) */}
-        <section>
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <Activity size={16} /> Actividad Reciente del Registro Contable
-          </h3>
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <h4 className="font-bold text-slate-800 text-sm">Últimos movimientos</h4>
-              <button onClick={() => onNavigate('debug')} className="text-xs text-[#06b6d4] font-medium cursor-pointer hover:underline">Ver Registro Completo</button>
-            </div>
+        {/* 4. ÚLTIMA ACTIVIDAD (Ledger) */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Actividad Reciente</h3>
+            <button onClick={() => onNavigate('debug')} className="text-[10px] font-bold text-cyan-600 uppercase tracking-wider hover:underline">Ver Todo</button>
+          </div>
+          <Card className="overflow-hidden">
             <ul className="divide-y divide-slate-100">
               {recentEvents.map((ev) => {
                 const isPositive = ev.quantity > 0 || (ev.type === 'PURCHASE' && ev.quantity !== 0);
@@ -276,31 +262,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                 const displayQty = formatQuantityForDisplay(Math.abs(ev.quantity), ev.unit as BaseUnit);
 
                 return (
-                  <li key={ev.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                          isPositive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {ev.type === 'PURCHASE' ? 'Entrada' : ev.type === 'CONSUMPTION' ? 'Salida' : 'Ajuste'}
-                        </span>
-                        <p className="font-medium text-slate-800 text-sm">{displayName}</p>
+                  <li key={ev.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                    <div className="min-w-0 flex-1 pr-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge type={ev.type === 'PURCHASE' ? 'success' : 'inventory-no-consume'}>
+                          {ev.type === 'PURCHASE' ? 'Entrada' : 'Salida'}
+                        </Badge>
+                        <p className="font-bold text-slate-800 text-sm truncate">{displayName}</p>
                       </div>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {new Date(ev.timestamp).toLocaleString()} • {ev.source}
+                      <p className="text-[10px] font-medium text-slate-400 uppercase">
+                        {new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {ev.source}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-bold text-sm ${isPositive ? 'text-green-600' : 'text-amber-600'}`}>
+                    <div className="text-right shrink-0">
+                      <p className={`font-bold text-sm ${isPositive ? 'text-emerald-600' : 'text-amber-600'}`}>
                         {ev.quantity > 0 ? '+' : (ev.quantity < 0 ? '-' : '')}{formatNumber(displayQty.value)} {displayQty.unit}
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5">@ {formatNumber(ev.costPerUnit, 4)}€</p>
+                      <p className="text-[10px] font-bold text-slate-400 mt-0.5">{formatNumber(ev.costPerUnit, 4)}€</p>
                     </div>
                   </li>
                 );
               })}
             </ul>
-          </div>
+          </Card>
         </section>
       </div>
     </div>

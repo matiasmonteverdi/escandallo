@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { RefreshCw, Trash2, AlertTriangle, FlaskConical, CheckCircle2, X } from 'lucide-react';
 import { exampleDataService } from '../services/exampleData.service';
+import { toast } from '../components/ui/Toast';
 
 export const ConfigPage: React.FC = () => {
   const [wiping, setWiping] = useState(false);
@@ -23,7 +24,7 @@ export const ConfigPage: React.FC = () => {
       }, 1500);
     } catch (err) {
       console.error('Error wiping database:', err);
-      alert('Error al borrar la base de datos. Revisa la consola.');
+      toast.error('Error al borrar la base de datos. Revisa la consola.');
       setWiping(false);
     }
   };
@@ -40,7 +41,7 @@ export const ConfigPage: React.FC = () => {
       }, 1500);
     } catch (err) {
       console.error('Error seeding example:', err);
-      alert('Error al cargar el ejemplo. Revisa la consola.');
+      toast.error('Error al cargar el ejemplo. Revisa la consola.');
       setSeeding(false);
     }
   };

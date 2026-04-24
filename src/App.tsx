@@ -13,6 +13,7 @@ import { useAppStore } from './store/useAppStore';
 
 import { Loader2 } from 'lucide-react';
 import { exampleDataService } from './services/exampleData.service';
+import { ToastContainer } from './components/ui/Toast';
 
 
 // We keep this exported for any other components that might need it, 
@@ -110,7 +111,8 @@ function App() {
   }
 
   return (
-    <Layout activePage={activePage} onPageChange={setActivePage}>
+    <>
+      <Layout activePage={activePage} onPageChange={setActivePage}>
       {activePage === 'dashboard' && <DashboardPage onNavigate={setActivePage} />}
       {activePage === 'recipes' && <RecipesPage />}
       {activePage === 'production' && <ProductionPage />}
@@ -124,6 +126,8 @@ function App() {
         </div>
       )}
     </Layout>
+      <ToastContainer />
+    </>
   );
 }
 
