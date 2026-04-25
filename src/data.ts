@@ -65,6 +65,7 @@ export type Dish = {
   variants?: VariantGroup[];
   indirectCosts?: IndirectCost[];
   defaultConsumeStock?: boolean;
+  sellingPrice?: number; // PVP — precio de venta al público
   hasInactiveIngredients?: boolean; // Optimization flag
   instructions?: string;
   notes?: string;

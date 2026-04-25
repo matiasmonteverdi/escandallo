@@ -8,7 +8,7 @@ import { computeStockProjection } from '../services/inventory.service';
 import { PDFViewer, PDFDownloadLink, pdf } from '@react-pdf/renderer';
 import RecipePDF from '../components/RecipePDF';
 import { mapRecipeToPDFModel, PDFModel } from '../services/pdfAdapter.service';
-import { X, ExternalLink, Eye, EyeOff, Printer, Loader2, Clock, AlertCircle } from 'lucide-react';
+import { X, ExternalLink, Eye, EyeOff, Printer, Loader2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { syncQueueService } from '../services/syncQueue.service';
 import { resolveIngredientCost } from '../services/pricing.service';
@@ -156,6 +156,7 @@ export const RecipesPage: React.FC = () => {
   const [editingDishId, setEditingDishId] = useState<string | null>(null);
   const [dishName, setDishName] = useState<string>('');
   const [dishPortions, setDishPortions] = useState<number>(1);
+  const [dishSellingPrice, setDishSellingPrice] = useState<string>('');
 
   // Custom ingredient form state
   const [customIngredients, setCustomIngredients] = useState<Ingredient[]>([]);
@@ -286,6 +287,7 @@ export const RecipesPage: React.FC = () => {
     setEditingDishId(dish.id);
     setDishName(dish.name);
     setDishPortions(dish.portions);
+    setDishSellingPrice(dish.sellingPrice ? String(dish.sellingPrice) : '');
     setCustomIngredients(dish.ingredients || []);
     setCustomSubRecipes(dish.subRecipes || []);
     setCustomVariants(dish.variants || []);
@@ -301,6 +303,7 @@ export const RecipesPage: React.FC = () => {
     setEditingDishId(null);
     setDishName('');
     setDishPortions(1);
+    setDishSellingPrice('');
     setCustomIngredients([]);
     setIngredientSearch('');
     setSelectedCatalogId(null);
@@ -331,6 +334,7 @@ export const RecipesPage: React.FC = () => {
       id: editingDishId || Date.now().toString(),
       name: dishName,
       portions: dishPortions,
+      sellingPrice: dishSellingPrice ? parseFloat(dishSellingPrice) : undefined,
       ingredients: customIngredients,
       subRecipes: customSubRecipes,
       variants: customVariants,
@@ -544,6 +548,17 @@ export const RecipesPage: React.FC = () => {
     const suggestedPrice = totalCost / (1 - (marginPercent / 100));
     const profitMargin = suggestedPrice - totalCost;
 
+    const costPerPortion = dishPortions > 0 ? totalCost / selectedDish.portions : totalCost;
+    const pvp = selectedDish.sellingPrice;
+    const realMarginPercent = pvp && pvp > 0 ? ((pvp - costPerPortion) / pvp) * 100 : null;
+    const marginColor = realMarginPercent === null
+      ? { bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-600', label: '' }
+      : realMarginPercent >= 70
+        ? { bg: 'bg-green-50', border: 'border-green-100', text: 'text-green-600', label: '🟢 Excelente' }
+        : realMarginPercent >= 60
+          ? { bg: 'bg-amber-50', border: 'border-amber-100', text: 'text-amber-600', label: '🟡 Ajustado' }
+          : { bg: 'bg-red-50', border: 'border-red-100', text: 'text-red-600', label: '🔴 Bajo riesgo' };
+
     return (
       <div className="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
         {/* Header */}
@@ -580,21 +595,46 @@ export const RecipesPage: React.FC = () => {
         <div className="p-4 md:p-8 flex-1 overflow-y-auto">
           {/* KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            {/* Coste por ración */}
             <div className="bg-red-50 rounded-xl p-6 flex flex-col items-center justify-center border border-red-100">
               <DollarSign className="text-red-500 mb-2" size={32} />
-              <span className="text-red-600 font-medium text-sm mb-1">Coste Total</span>
-              <span className="text-red-600 font-bold text-3xl">{totalCost.toFixed(2)}€</span>
+              <span className="text-red-600 font-medium text-sm mb-1">Coste por ración</span>
+              <span className="text-red-600 font-bold text-3xl">{costPerPortion.toFixed(2)}€</span>
+              <span className="text-red-500/70 text-xs mt-1">Total: {totalCost.toFixed(2)}€ ({selectedDish.portions} rac.)</span>
             </div>
+
+            {/* PVP */}
             <div className="bg-blue-50 rounded-xl p-6 flex flex-col items-center justify-center border border-blue-100">
               <TrendingUp className="text-blue-500 mb-2" size={32} />
-              <span className="text-blue-600 font-medium text-sm mb-1">Precio Sugerido</span>
-              <span className="text-blue-600 font-bold text-3xl">{suggestedPrice.toFixed(2)}€</span>
+              <span className="text-blue-600 font-medium text-sm mb-1">Precio de Venta (PVP)</span>
+              {pvp ? (
+                <>
+                  <span className="text-blue-600 font-bold text-3xl">{pvp.toFixed(2)}€</span>
+                  <span className="text-blue-500/70 text-xs mt-1">Beneficio: +{(pvp - costPerPortion).toFixed(2)}€/rac.</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-blue-400 font-bold text-xl">Sin definir</span>
+                  <span className="text-blue-400/70 text-xs mt-1">Añade PVP en "Editar"</span>
+                </>
+              )}
             </div>
-            <div className="bg-green-50 rounded-xl p-6 flex flex-col items-center justify-center border border-green-100">
-              <PieChart className="text-green-500 mb-2" size={32} />
-              <span className="text-green-600 font-medium text-sm mb-1">Margen de Beneficio</span>
-              <span className="text-green-600 font-bold text-3xl">{profitMargin.toFixed(2)}€</span>
-              <span className="text-green-600/80 text-xs mt-1">{marginPercent.toFixed(1)}%</span>
+
+            {/* Margen */}
+            <div className={`${marginColor.bg} rounded-xl p-6 flex flex-col items-center justify-center border ${marginColor.border}`}>
+              <PieChart className={`${marginColor.text} mb-2`} size={32} />
+              <span className={`${marginColor.text} font-medium text-sm mb-1`}>Margen Real</span>
+              {realMarginPercent !== null ? (
+                <>
+                  <span className={`${marginColor.text} font-bold text-3xl`}>{realMarginPercent.toFixed(1)}%</span>
+                  <span className={`${marginColor.text}/80 text-xs mt-1`}>{marginColor.label}</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-blue-400 font-bold text-xl">—</span>
+                  <span className="text-blue-400/70 text-xs mt-1">Define el PVP para calcular</span>
+                </>
+              )}
             </div>
           </div>
 
@@ -1057,7 +1097,7 @@ export const RecipesPage: React.FC = () => {
 
                 {/* Basic Info */}
                 <div className="bg-slate-50 p-6 rounded-xl border border-slate-100 mb-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del Plato</label>
                       <input
@@ -1084,6 +1124,17 @@ export const RecipesPage: React.FC = () => {
                           }
                         }}
                         className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Precio de Venta PVP (€)</label>
+                      <input
+                        type="number" inputMode="decimal"
+                        min="0" step="0.01"
+                        value={dishSellingPrice}
+                        onChange={(e) => setDishSellingPrice(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                        placeholder="Ej. 12.50"
                       />
                     </div>
                   </div>
