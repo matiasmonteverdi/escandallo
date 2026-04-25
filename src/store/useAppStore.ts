@@ -31,10 +31,13 @@ interface AppState {
   loading: boolean;
   setLoading: (loading: boolean) => void;
   
+  isOnline: boolean;
+  setOnline: (status: boolean) => void;
+  
   // Actions
   initSync: () => () => void; // Returns cleanup function
   setUI: (ui: Partial<UIState>) => void;
-  setDraftDish: (id: string, draft: DraftDish) => void;
+  setDraftDish: (id: string, draft: DraftDish, actionType?: 'CREATE_DISH' | 'UPDATE_DISH') => Promise<void>;
   removeDraftDish: (id: string) => void;
 
   setCatalog: (catalog: CatalogItem[]) => void;
@@ -58,6 +61,7 @@ interface AppState {
   activateCatalogItem: (id: string) => Promise<void>;
   recalculateDishFlags: () => Promise<void>;
   processSyncQueue: () => Promise<void>;
+  getDraftStatus: (id: string) => 'pending' | 'synced' | 'error' | null;
 }
 
 export const useAppStore = create<AppState>()(
@@ -77,15 +81,50 @@ export const useAppStore = create<AppState>()(
       inventoryEvents: [],
       inventorySnapshots: [],
       loading: true,
+      isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
 
       setLoading: (loading) => set({ loading }),
+      setOnline: (isOnline) => {
+        const wasOffline = !get().isOnline;
+        set({ isOnline });
+        if (wasOffline && isOnline) {
+          get().processSyncQueue();
+        }
+      },
 
   initSync: () => {
-    const unsubCatalog = firebaseService.subscribeToCollection('catalog', catalogConverter, (catalog) => set({ catalog }));
-    const unsubDishes = firebaseService.subscribeToCollection('dishes', dishConverter, (dishes) => set({ dishes }));
-    const unsubProductions = firebaseService.subscribeToCollection('productions', productionConverter, (productions) => set({ productions }));
+    let loaded = {
+      catalog: false,
+      dishes: false,
+      productions: false,
+      events: false
+    };
+
+    const checkLoaded = () => {
+      if (Object.values(loaded).every(Boolean)) {
+        set({ loading: false });
+      }
+    };
+
+    const unsubCatalog = firebaseService.subscribeToCollection('catalog', catalogConverter, (catalog) => {
+      loaded.catalog = true;
+      set({ catalog });
+      checkLoaded();
+    });
+    const unsubDishes = firebaseService.subscribeToCollection('dishes', dishConverter, (dishes) => {
+      loaded.dishes = true;
+      set({ dishes });
+      checkLoaded();
+    });
+    const unsubProductions = firebaseService.subscribeToCollection('productions', productionConverter, (productions) => {
+      loaded.productions = true;
+      set({ productions });
+      checkLoaded();
+    });
     const unsubEvents = firebaseService.subscribeToCollection('inventoryEvents', inventoryEventConverter, (inventoryEvents) => {
-      set({ inventoryEvents, loading: false });
+      loaded.events = true;
+      set({ inventoryEvents });
+      checkLoaded();
     });
 
     return () => {
@@ -97,9 +136,17 @@ export const useAppStore = create<AppState>()(
   },
 
   setUI: (uiParams) => set((state) => ({ ui: { ...state.ui, ...uiParams } })),
-  setDraftDish: (id, draft) => set((state) => ({
-    draftDishes: { ...state.draftDishes, [id]: draft }
-  })),
+  setDraftDish: async (id, draft, actionType = 'CREATE_DISH') => {
+    set((state) => ({
+      draftDishes: { ...state.draftDishes, [id]: draft }
+    }));
+    
+    // Auto-enqueue for sync
+    await syncQueueService.enqueue({
+      type: actionType,
+      payload: draft.data
+    });
+  },
   removeDraftDish: (id) => set((state) => {
     const newDrafts = { ...state.draftDishes };
     delete newDrafts[id];
@@ -131,6 +178,10 @@ export const useAppStore = create<AppState>()(
 
   setProductions: (productions) => set({ productions }),
   addProduction: async (production) => {
+    const { isOnline } = get();
+    if (!isOnline) {
+      throw new Error('No se puede registrar producción sin conexión (ERP Guard)');
+    }
     await firebaseService.saveItem('productions', production, productionConverter);
   },
 
@@ -140,7 +191,12 @@ export const useAppStore = create<AppState>()(
   },
   addInventoryEvents: async (events) => {
     for (const event of events) {
-      await firebaseService.saveItem('inventoryEvents', event, inventoryEventConverter);
+      try {
+        await firebaseService.saveItem('inventoryEvents', event, inventoryEventConverter);
+      } catch (e) {
+        console.error('Partial failure in batch', e);
+        break;
+      }
     }
   },
 
@@ -203,6 +259,7 @@ export const useAppStore = create<AppState>()(
     };
 
     for (const dish of dishes) {
+      if (!dish.id) continue;
       const needsUpdate = checkInactive(dish);
       if (dish.hasInactiveIngredients !== needsUpdate) {
         const updatedDish = { ...dish, hasInactiveIngredients: needsUpdate };
@@ -212,46 +269,62 @@ export const useAppStore = create<AppState>()(
   },
 
   processSyncQueue: async () => {
-    const { addDish, updateDish, deleteDish, addProduction, addInventoryEvent, removeDraftDish } = get();
+    if (!navigator.onLine) return;
+    
+    const { removeDraftDish } = get();
     const queue = await syncQueueService.getQueue();
     if (queue.length === 0) return;
 
     for (const action of queue) {
+      if (action.processed) continue;
+      if (action.retryCount > 3) {
+        console.warn('Action failed too many times, skipping:', action.id);
+        // Could mark as 'error' in draftDishes here
+        continue;
+      }
+
       try {
         switch (action.type) {
           case 'CREATE_DISH':
-            await addDish(action.payload);
+            await firebaseService.saveItem('dishes', action.payload, dishConverter);
             removeDraftDish(action.payload.id);
             break;
           case 'UPDATE_DISH':
-            await updateDish(action.payload);
+            await firebaseService.saveItem('dishes', action.payload, dishConverter);
             removeDraftDish(action.payload.id);
             break;
           case 'DELETE_DISH':
-            await deleteDish(action.payload);
+            await firebaseService.deleteItem('dishes', action.payload);
             break;
           case 'ADD_INVENTORY':
-            await addInventoryEvent(action.payload);
+            await firebaseService.saveItem('inventoryEvents', action.payload, inventoryEventConverter);
             break;
           case 'ADD_PRODUCTION':
-            await addProduction(action.payload);
+            await firebaseService.saveItem('productions', action.payload, productionConverter);
             break;
         }
+        await syncQueueService.markProcessed(action.id);
         await syncQueueService.dequeue(action.id);
       } catch (error) {
         console.error('Sync error:', error);
         await syncQueueService.incrementRetry(action.id);
-        // Break to avoid hammering if it's a network issue
         break;
       }
     }
+  },
+  getDraftStatus: (id) => {
+    const draft = get().draftDishes[id];
+    return draft ? draft.syncStatus : null;
   }
 }),
 {
   name: 'escandallo-storage',
-  partialize: (state) => ({
-    ui: state.ui,
-    draftDishes: state.draftDishes
-  })
-}
-));
+      partialize: (state) => ({
+        ui: state.ui,
+        draftDishes: Object.fromEntries(
+          Object.entries(state.draftDishes).slice(-20)
+        )
+      })
+    }
+  )
+);

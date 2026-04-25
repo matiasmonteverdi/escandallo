@@ -4,6 +4,7 @@ export type SyncAction = {
   payload: any;
   timestamp: number;
   retryCount: number;
+  processed?: boolean;
 };
 
 class SyncQueueService {
@@ -91,6 +92,28 @@ class SyncQueueService {
         const action = getRequest.result as SyncAction;
         if (action) {
           action.retryCount += 1;
+          const updateRequest = store.put(action);
+          updateRequest.onsuccess = () => resolve();
+          updateRequest.onerror = () => reject(updateRequest.error);
+        } else {
+          resolve();
+        }
+      };
+      getRequest.onerror = () => reject(getRequest.error);
+    });
+  }
+
+  async markProcessed(id: string): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(this.storeName, 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const getRequest = store.get(id);
+
+      getRequest.onsuccess = () => {
+        const action = getRequest.result as SyncAction;
+        if (action) {
+          action.processed = true;
           const updateRequest = store.put(action);
           updateRequest.onsuccess = () => resolve();
           updateRequest.onerror = () => reject(updateRequest.error);

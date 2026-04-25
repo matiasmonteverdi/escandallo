@@ -144,6 +144,29 @@ export function Layout({ children, activePage, onPageChange }: LayoutProps) {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* Status Banners */}
+        {!isOnline && (
+          <div className="bg-amber-50 border-b border-amber-100 px-4 py-1.5 flex items-center justify-center gap-2 text-[10px] font-bold text-amber-700 uppercase tracking-widest animate-in slide-in-from-top duration-300">
+            <WifiOff size={12} />
+            Modo Offline: Los escandallos se guardarán como borradores
+          </div>
+        )}
+        {queueSize > 0 && isOnline && (
+          <div className="bg-cyan-50 border-b border-cyan-100 px-4 py-1.5 flex items-center justify-center gap-3 text-[10px] font-bold text-cyan-700 uppercase tracking-widest animate-in slide-in-from-top duration-300">
+            <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
+            {queueSize} cambios pendientes de sincronizar
+            <button 
+              onClick={async () => {
+                setIsSyncing(true);
+                await processSyncQueue();
+                setIsSyncing(false);
+              }}
+              className="ml-2 bg-cyan-600 text-white px-2 py-0.5 rounded hover:bg-cyan-700 transition-colors"
+            >
+              Sincronizar ahora
+            </button>
+          </div>
+        )}
         {/* Header */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 sticky top-0 z-30">
           <div className="flex items-center gap-2 md:gap-4">
@@ -171,6 +194,11 @@ export function Layout({ children, activePage, onPageChange }: LayoutProps) {
             )}
             <button className="text-slate-400 hover:text-slate-600 relative min-h-[44px] min-w-[44px] flex items-center justify-center">
               <Bell size={20} />
+              {!isOnline && (
+                <div className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full p-1 border-2 border-white shadow-sm">
+                  <WifiOff size={10} />
+                </div>
+              )}
               <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full"></span>
             </button>
           </div>

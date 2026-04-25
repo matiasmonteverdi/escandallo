@@ -344,19 +344,14 @@ export const RecipesPage: React.FC = () => {
 
     if (!isOnline) {
       const draftId = editingDishId || `draft_${Date.now()}`;
-      newDish.id = draftId; // Ensure draft has ID
+      newDish.id = draftId; 
 
-      setDraftDish(draftId, {
+      await setDraftDish(draftId, {
         id: draftId,
         data: newDish,
         updatedAt: Date.now(),
         syncStatus: 'pending'
-      });
-
-      await syncQueueService.enqueue({
-        type: editingDishId ? 'UPDATE_DISH' : 'CREATE_DISH',
-        payload: newDish
-      });
+      }, editingDishId ? 'UPDATE_DISH' : 'CREATE_DISH');
 
       alert('Escandallo guardado localmente (Offline). Se sincronizará al volver online.');
     } else {
@@ -1018,9 +1013,23 @@ export const RecipesPage: React.FC = () => {
                       className={`group bg-white border ${isDraft ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'} rounded-xl p-5 cursor-pointer hover:border-[#06b6d4] hover:shadow-md transition-all flex flex-col items-center text-center relative`}
                     >
                       {isDraft && (
-                        <div className="absolute top-3 right-3 text-amber-600 flex items-center gap-1" title="Pendiente de sincronizar">
-                          <Clock size={14} className="animate-pulse" />
-                          <span className="text-[10px] font-bold uppercase tracking-tight">Draft</span>
+                        <div className="absolute top-3 right-3 flex items-center gap-1.5" title="Estado de sincronización">
+                          {draftDishes[dish.id].syncStatus === 'pending' ? (
+                            <div className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-200">
+                              <Clock size={10} className="animate-pulse" />
+                              <span className="text-[10px] font-bold uppercase tracking-tight">Pendiente</span>
+                            </div>
+                          ) : draftDishes[dish.id].syncStatus === 'error' ? (
+                            <div className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full flex items-center gap-1 border border-red-200">
+                              <X size={10} />
+                              <span className="text-[10px] font-bold uppercase tracking-tight">Error</span>
+                            </div>
+                          ) : (
+                            <div className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1 border border-green-200">
+                              <RefreshCw size={10} />
+                              <span className="text-[10px] font-bold uppercase tracking-tight">Listo</span>
+                            </div>
+                          )}
                         </div>
                       )}
                       <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-50 transition-colors">
