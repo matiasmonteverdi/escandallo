@@ -7,6 +7,7 @@ import { computeStockProjection } from '../services/inventory.service';
 import { Production } from '../data';
 import { calculateDishCost } from '../App';
 import { ProductionMode } from '../domain/types';
+import { useConnectivity } from '../hooks/useConnectivity';
 
 export const ProductionPage: React.FC = () => {
   const dishes = useAppStore(state => state.dishes);
@@ -16,6 +17,7 @@ export const ProductionPage: React.FC = () => {
   const inventoryEvents = useAppStore(state => state.inventoryEvents);
   const addInventoryEvent = useAppStore(state => state.addInventoryEvent);
   const inventorySnapshots = useAppStore(state => state.inventorySnapshots);
+  const { isOnline } = useConnectivity();
 
   const latestSnapshot = inventorySnapshots.length > 0 ? inventorySnapshots[inventorySnapshots.length - 1] : null;
   const stockProjection = computeStockProjection(inventoryEvents, latestSnapshot);
@@ -109,15 +111,28 @@ export const ProductionPage: React.FC = () => {
         </div>
         <button 
           onClick={() => setShowProductionForm(true)}
-          className="w-full md:w-auto bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 active:bg-[#0e7490] text-white px-4 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-3 shadow-md"
+          disabled={!isOnline}
+          className="w-full md:w-auto btn-primary flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={18} />
           Nueva Producción
         </button>
       </div>
 
+      {!isOnline && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
+          <div className="text-amber-600 mt-0.5"><AlertCircle size={18} /></div>
+          <div>
+            <h4 className="font-bold text-amber-800 text-sm">Escritura Bloqueada (Offline)</h4>
+            <p className="text-xs text-amber-700 mt-1">
+              Debes estar online para registrar nuevas producciones y asegurar la consistencia del inventario.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Desktop Table */}
-      <div className="hidden md:block bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="hidden md:block card-base overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -209,7 +224,7 @@ export const ProductionPage: React.FC = () => {
           const isBad = deviation > 5;
 
           return (
-            <div key={prod.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-3 relative">
+            <div key={prod.id} className="card-base p-5 flex flex-col gap-3 relative">
               <div className="flex justify-between items-start">
                 <div>
                   <div className="text-xs text-slate-400 mb-1">{new Date(prod.date).toLocaleDateString()}</div>
@@ -250,7 +265,7 @@ export const ProductionPage: React.FC = () => {
       {/* Bottom Sheet: Registrar Producción */}
       {showProductionForm && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4 transition-opacity">
-          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
               <h3 className="font-serif font-bold text-xl text-slate-800">Registrar Producción</h3>
               <button 
@@ -265,7 +280,7 @@ export const ProductionPage: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-1">Receta</label>
                   <select 
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent bg-white"
+                    className="input-base bg-white"
                     value={prodDishId}
                     onChange={(e) => {
                       setProdDishId(e.target.value);
@@ -328,7 +343,7 @@ export const ProductionPage: React.FC = () => {
                       <div key={gIdx}>
                         <label className="block text-sm font-medium text-slate-600 mb-1">{group.name}</label>
                         <select
-                          className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent bg-white"
+                          className="input-base bg-white"
                           value={prodVariantSelection[group.name] ?? -1}
                           onChange={(e) => setProdVariantSelection({
                             ...prodVariantSelection,
@@ -359,7 +374,7 @@ export const ProductionPage: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-1">Modo de Producción</label>
                   <select
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent bg-white"
+                    className="input-base bg-white"
                     value={productionMode}
                     onChange={(e) => setProductionMode(e.target.value as ProductionMode)}
                   >
@@ -380,7 +395,7 @@ export const ProductionPage: React.FC = () => {
                     min="0.1" 
                     step="any" 
                     required
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent text-lg font-bold"
+                    className="input-base text-lg font-bold"
                     value={prodRealQty}
                     onChange={(e) => setProdRealQty(e.target.value)}
                     placeholder={selectedDishForProd ? `Teórico: ${selectedDishForProd.portions}` : "Ej. 10"}
@@ -409,7 +424,7 @@ export const ProductionPage: React.FC = () => {
                   <label className="block text-sm font-medium text-slate-600 mb-1">Notas (Opcional)</label>
                   <input 
                     type="text" 
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                    className="input-base"
                     value={prodNotes}
                     onChange={(e) => setProdNotes(e.target.value)}
                     placeholder="Ej. Las patatas mermaron más de lo normal"
@@ -420,7 +435,7 @@ export const ProductionPage: React.FC = () => {
                   <button 
                     type="submit"
                     disabled={selectedDishForProd?.hasInactiveIngredients}
-                    className="w-full bg-[#06b6d4] hover:bg-[#0891b2] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed active:scale-95 active:bg-[#0e7490] text-white py-4 rounded-xl font-medium transition-all shadow-lg text-lg flex items-center justify-center gap-2"
+                    className="w-full btn-primary py-4 text-lg flex items-center justify-center gap-2"
                   >
                     <Check size={20} />
                     {selectedDishForProd?.hasInactiveIngredients ? 'Producción Bloqueada' : 'Registrar Producción'}

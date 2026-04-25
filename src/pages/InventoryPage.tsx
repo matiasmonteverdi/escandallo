@@ -7,6 +7,7 @@ import { createPurchaseEvent } from '../services/purchase.service';
 import { Unit, BaseUnit } from '../domain/types';
 import { PurchaseInput } from '../domain/purchase';
 import { formatQuantityForDisplay, formatCostForDisplay, formatNumber } from '../domain/units';
+import { useConnectivity } from '../hooks/useConnectivity';
 
 export const InventoryPage: React.FC = () => {
   const inventoryEvents = useAppStore(state => state.inventoryEvents);
@@ -15,6 +16,7 @@ export const InventoryPage: React.FC = () => {
   const setInventorySnapshots = useAppStore(state => state.setInventorySnapshots);
   const catalog = useAppStore(state => state.catalog);
   const dishes = useAppStore(state => state.dishes);
+  const { isOnline } = useConnectivity();
 
   const [showPurchaseForm, setShowPurchaseForm] = useState(false);
   const [purchaseIngredient, setPurchaseIngredient] = useState('');
@@ -144,13 +146,26 @@ export const InventoryPage: React.FC = () => {
         <div className="flex gap-3 w-full md:w-auto">
           <button 
             onClick={() => setShowPurchaseForm(true)}
-            className="flex-1 md:flex-none bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 active:bg-[#0e7490] text-white px-4 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-3 shadow-md border-b-2 border-[#0e7490]/30"
+            disabled={!isOnline}
+            className="btn-primary flex-1 md:flex-none flex items-center justify-center gap-3 border-b-2 border-[#0e7490]/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={18} />
             Entrada de Compra
           </button>
         </div>
       </div>
+
+      {!isOnline && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
+          <div className="text-amber-600 mt-0.5"><AlertCircle size={18} /></div>
+          <div>
+            <h4 className="font-bold text-amber-800 text-sm">Escritura Bloqueada (Offline)</h4>
+            <p className="text-xs text-amber-700 mt-1">
+              Debes estar online para registrar compras o ajustar stock y asegurar la consistencia del inventario.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-4 mb-6 border-b border-slate-200">
         <button 
@@ -171,7 +186,7 @@ export const InventoryPage: React.FC = () => {
 
 
       {/* Desktop Table */}
-      <div className="hidden md:block bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="hidden md:block card-base overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -214,11 +229,13 @@ export const InventoryPage: React.FC = () => {
                     <div className="flex gap-1">
                       <button 
                         onClick={() => {
+                          if (!isOnline) return;
                           setEditingStock({name: item.id, qty: data.quantity, unit: data.unit as BaseUnit, cost: data.cost});
                           setNewStockCost(data.cost.toString());
                         }}
-                        className="text-[#06b6d4] hover:bg-[#06b6d4]/10 p-2 rounded-lg transition-all"
-                        title="Ajustar Stock"
+                        disabled={!isOnline}
+                        className="text-[#06b6d4] hover:bg-[#06b6d4]/10 p-2 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={isOnline ? "Ajustar Stock" : "Bloqueado en Offline"}
                       >
                         <Edit2 size={18} />
                       </button>
@@ -265,7 +282,7 @@ export const InventoryPage: React.FC = () => {
           const displayQty = formatQuantityForDisplay(data.quantity, data.unit as BaseUnit);
           const displayCost = formatCostForDisplay(data.cost, data.unit as BaseUnit);
           return (
-            <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-3 relative">
+            <div key={item.id} className="card-base p-5 flex flex-col gap-3 relative">
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-bold text-slate-800 text-lg">{item.name}</h3>
@@ -278,10 +295,12 @@ export const InventoryPage: React.FC = () => {
                 <div className="flex gap-2">
                   <button 
                     onClick={() => {
+                      if (!isOnline) return;
                       setEditingStock({name: item.id, qty: data.quantity, unit: data.unit as BaseUnit, cost: data.cost});
                       setNewStockCost(data.cost.toString());
                     }}
-                    className="text-[#06b6d4] bg-[#06b6d4]/10 hover:bg-[#06b6d4]/20 active:scale-95 transition-transform p-3 rounded-lg flex items-center justify-center"
+                    disabled={!isOnline}
+                    className="text-[#06b6d4] bg-[#06b6d4]/10 hover:bg-[#06b6d4]/20 active:scale-95 transition-transform p-3 rounded-lg flex items-center justify-center disabled:opacity-30"
                   >
                     <Edit2 size={20} />
                   </button>
@@ -326,7 +345,7 @@ export const InventoryPage: React.FC = () => {
       {/* Bottom Sheet: Registrar Compra */}
       {showPurchaseForm && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4 transition-opacity">
-          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
               <h3 className="font-serif font-bold text-xl text-slate-800">Registrar Compra</h3>
               <button 
@@ -341,7 +360,7 @@ export const InventoryPage: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-1">Ingrediente</label>
                   <select 
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent bg-white"
+                    className="input-base bg-white"
                     value={purchaseIngredient}
                     onChange={(e) => setPurchaseIngredient(e.target.value)}
                     required
@@ -388,7 +407,7 @@ export const InventoryPage: React.FC = () => {
                       min="0" 
                       step="any" 
                       required
-                      className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                      className="input-base"
                       value={purchaseQty}
                       onChange={(e) => setPurchaseQty(e.target.value)}
                     />
@@ -396,7 +415,7 @@ export const InventoryPage: React.FC = () => {
                   <div className="w-1/3">
                     <label className="block text-sm font-medium text-slate-600 mb-1">Unidad</label>
                     <select 
-                      className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent bg-white"
+                      className="input-base bg-white"
                       value={purchaseUnit}
                       onChange={(e) => setPurchaseUnit(e.target.value as Unit)}
                     >
@@ -430,7 +449,7 @@ export const InventoryPage: React.FC = () => {
                     min="0" 
                     step="any" 
                     required
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                    className="input-base"
                     value={purchaseTotalCost}
                     onChange={(e) => setPurchaseTotalCost(e.target.value)}
                   />
@@ -439,7 +458,7 @@ export const InventoryPage: React.FC = () => {
                 <div className="mt-4">
                   <button 
                     type="submit"
-                    className="w-full bg-slate-800 hover:bg-slate-700 active:scale-95 active:bg-slate-900 text-white py-4 rounded-xl font-medium transition-all shadow-lg text-lg"
+                    className="w-full bg-slate-800 hover:bg-slate-700 active:scale-95 active:bg-slate-900 text-white font-semibold rounded-xl px-5 py-4 transition-all shadow-lg text-lg"
                   >
                     Guardar Compra
                   </button>
@@ -453,7 +472,7 @@ export const InventoryPage: React.FC = () => {
       {/* Bottom Sheet: Ajustar Inventario */}
       {editingStock && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4 transition-opacity">
-          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
               <h3 className="font-serif font-bold text-xl text-slate-800">Ajustar Inventario</h3>
               <button 
@@ -474,7 +493,7 @@ export const InventoryPage: React.FC = () => {
                   <label className="block text-sm font-medium text-slate-600 mb-1">Nueva Cantidad Real ({editingStock.unit})</label>
                   <input 
                     type="number" inputMode="decimal" step="any" required
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                    className="input-base"
                     placeholder="Ej. 1500"
                     value={newStockQty}
                     onChange={(e) => setNewStockQty(e.target.value)}
@@ -499,7 +518,7 @@ export const InventoryPage: React.FC = () => {
                   <label className="block text-sm font-medium text-slate-600 mb-1">Nuevo Coste U. (€/{editingStock.unit})</label>
                   <input 
                     type="number" inputMode="decimal" step="any" min="0" required
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent"
+                    className="input-base"
                     placeholder="Ej. 24.50"
                     value={newStockCost}
                     onChange={(e) => setNewStockCost(e.target.value)}
@@ -509,7 +528,7 @@ export const InventoryPage: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-1">Motivo del ajuste</label>
                   <select 
-                    className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#06b6d4] focus:border-transparent bg-white"
+                    className="input-base bg-white"
                     value={adjustmentReason}
                     onChange={(e) => setAdjustmentReason(e.target.value)}
                     required
@@ -526,7 +545,7 @@ export const InventoryPage: React.FC = () => {
                 <div className="mt-4">
                   <button 
                     type="submit"
-                    className="w-full bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 active:bg-[#0e7490] text-white py-4 rounded-xl font-medium transition-all shadow-lg text-lg flex items-center justify-center gap-2"
+                    className="w-full btn-primary py-4 text-lg flex items-center justify-center gap-2"
                   >
                     <AlertCircle size={20} />
                     Confirmar Ajuste

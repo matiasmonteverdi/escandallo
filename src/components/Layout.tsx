@@ -10,8 +10,15 @@ import {
   Search,
   X,
   ClipboardList,
-  Terminal
+  Terminal,
+  WifiOff,
+  RefreshCw,
+  DownloadCloud
 } from 'lucide-react';
+import { useConnectivity } from '../hooks/useConnectivity';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { syncQueueService } from '../services/syncQueue.service';
+import { useAppStore } from '../store/useAppStore';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -21,6 +28,32 @@ interface LayoutProps {
 
 export function Layout({ children, activePage, onPageChange }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { isOnline } = useConnectivity();
+  const { isInstallable, handleInstall, isIOS, isStandalone } = usePWAInstall();
+  const processSyncQueue = useAppStore(state => state.processSyncQueue);
+  const [queueSize, setQueueSize] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  React.useEffect(() => {
+    const checkQueue = async () => {
+      const q = await syncQueueService.getQueue();
+      setQueueSize(q.length);
+    };
+    checkQueue();
+    const interval = setInterval(checkQueue, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  React.useEffect(() => {
+    if (isOnline && queueSize > 0 && !isSyncing) {
+      const sync = async () => {
+        setIsSyncing(true);
+        await processSyncQueue();
+        setIsSyncing(false);
+      };
+      sync();
+    }
+  }, [isOnline, queueSize, processSyncQueue]);
 
   const navItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -127,9 +160,15 @@ export function Layout({ children, activePage, onPageChange }: LayoutProps) {
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-4">
-            <button className="text-slate-400 hover:text-slate-600 min-h-[44px] min-w-[44px] flex items-center justify-center">
-              <Search size={20} />
-            </button>
+            {!isStandalone && (
+              <button 
+                onClick={isIOS ? () => alert('Para instalar en iOS: Pulsa el botón "Compartir" (el cuadrado con flecha) y selecciona "Añadir a la pantalla de inicio".') : handleInstall}
+                className="text-slate-400 hover:text-[#06b6d4] min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors"
+                title="Instalar Aplicación"
+              >
+                <DownloadCloud size={20} />
+              </button>
+            )}
             <button className="text-slate-400 hover:text-slate-600 relative min-h-[44px] min-w-[44px] flex items-center justify-center">
               <Bell size={20} />
               <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full"></span>
@@ -138,8 +177,32 @@ export function Layout({ children, activePage, onPageChange }: LayoutProps) {
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          {children}
+        <div className="flex-1 overflow-y-auto">
+          {!isOnline && (
+            <div className="bg-amber-100 border-b border-amber-200 px-8 py-2 flex items-center gap-3 text-amber-800 text-sm font-medium animate-in slide-in-from-top duration-300">
+              <WifiOff size={16} className="shrink-0" />
+              <span>Modo Offline: Algunos módulos están en lectura. Los cambios se sincronizarán al volver.</span>
+            </div>
+          )}
+          {isOnline && queueSize > 0 && (
+            <div className="bg-[#06b6d4] text-white px-8 py-2 flex items-center justify-between animate-in slide-in-from-top duration-300">
+              <div className="flex items-center gap-3 text-sm font-medium">
+                <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+                <span>{isSyncing ? `Sincronizando cambios pendientes (${queueSize})...` : `${queueSize} cambios pendientes de subir.`}</span>
+              </div>
+              {!isSyncing && (
+                <button 
+                  onClick={() => processSyncQueue()}
+                  className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg font-bold transition-colors"
+                >
+                  FORZAR SYNC
+                </button>
+              )}
+            </div>
+          )}
+          <div className="p-4 md:p-8">
+            {children}
+          </div>
         </div>
       </main>
     </div>

@@ -1,11 +1,26 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { Dish, Production, InventoryEvent, InventorySnapshot, CatalogItem } from '../data';
 import { firebaseService, catalogConverter, dishConverter, productionConverter, inventoryEventConverter } from '../services/firebase.service';
+import { syncQueueService } from '../services/syncQueue.service';
 
-interface AppState {
+export type UIState = {
   activePage: string;
   activeTab: 'traditional' | 'custom';
   view: 'selection' | 'result';
+};
+
+export type DraftDish = {
+  id: string;
+  data: Dish;
+  updatedAt: number;
+  syncStatus: 'pending' | 'synced' | 'error';
+};
+
+interface AppState {
+  ui: UIState;
+  draftDishes: Record<string, DraftDish>;
+
   catalog: CatalogItem[];
   dishes: Dish[];
   selectedDish: Dish | null;
@@ -18,9 +33,10 @@ interface AppState {
   
   // Actions
   initSync: () => () => void; // Returns cleanup function
-  setActivePage: (page: string) => void;
-  setActiveTab: (tab: 'traditional' | 'custom') => void;
-  setView: (view: 'selection' | 'result') => void;
+  setUI: (ui: Partial<UIState>) => void;
+  setDraftDish: (id: string, draft: DraftDish) => void;
+  removeDraftDish: (id: string) => void;
+
   setCatalog: (catalog: CatalogItem[]) => void;
   setDishes: (dishes: Dish[]) => void;
   setSelectedDish: (dish: Dish | null) => void;
@@ -41,23 +57,28 @@ interface AppState {
   deactivateCatalogItem: (id: string) => Promise<void>;
   activateCatalogItem: (id: string) => Promise<void>;
   recalculateDishFlags: () => Promise<void>;
+  processSyncQueue: () => Promise<void>;
 }
 
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      ui: {
+        activePage: 'recipes',
+        activeTab: 'traditional',
+        view: 'selection',
+      },
+      draftDishes: {},
 
+      catalog: [],
+      dishes: [],
+      selectedDish: null,
+      productions: [],
+      inventoryEvents: [],
+      inventorySnapshots: [],
+      loading: true,
 
-export const useAppStore = create<AppState>((set, get) => ({
-  activePage: 'recipes',
-  activeTab: 'traditional',
-  view: 'selection',
-  catalog: [],
-  dishes: [],
-  selectedDish: null,
-  productions: [],
-  inventoryEvents: [],
-  inventorySnapshots: [],
-  loading: true,
-
-  setLoading: (loading) => set({ loading }),
+      setLoading: (loading) => set({ loading }),
 
   initSync: () => {
     const unsubCatalog = firebaseService.subscribeToCollection('catalog', catalogConverter, (catalog) => set({ catalog }));
@@ -75,9 +96,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
   },
 
-  setActivePage: (activePage) => set({ activePage }),
-  setActiveTab: (activeTab) => set({ activeTab }),
-  setView: (view) => set({ view }),
+  setUI: (uiParams) => set((state) => ({ ui: { ...state.ui, ...uiParams } })),
+  setDraftDish: (id, draft) => set((state) => ({
+    draftDishes: { ...state.draftDishes, [id]: draft }
+  })),
+  removeDraftDish: (id) => set((state) => {
+    const newDrafts = { ...state.draftDishes };
+    delete newDrafts[id];
+    return { draftDishes: newDrafts };
+  }),
+
   setCatalog: (catalog) => set({ catalog }),
   setDishes: (dishes) => set({ dishes }),
   setSelectedDish: (selectedDish) => set({ selectedDish }),
@@ -94,7 +122,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await firebaseService.deleteItem('dishes', dishId);
     set((state) => ({
       selectedDish: state.selectedDish?.id === dishId ? null : state.selectedDish,
-      view: state.selectedDish?.id === dishId ? 'selection' : state.view
+      ui: {
+        ...state.ui,
+        view: state.selectedDish?.id === dishId ? 'selection' : state.ui.view
+      }
     }));
   },
 
@@ -178,6 +209,49 @@ export const useAppStore = create<AppState>((set, get) => ({
         await firebaseService.saveItem('dishes', updatedDish, dishConverter);
       }
     }
-  }
-}));
+  },
 
+  processSyncQueue: async () => {
+    const { addDish, updateDish, deleteDish, addProduction, addInventoryEvent, removeDraftDish } = get();
+    const queue = await syncQueueService.getQueue();
+    if (queue.length === 0) return;
+
+    for (const action of queue) {
+      try {
+        switch (action.type) {
+          case 'CREATE_DISH':
+            await addDish(action.payload);
+            removeDraftDish(action.payload.id);
+            break;
+          case 'UPDATE_DISH':
+            await updateDish(action.payload);
+            removeDraftDish(action.payload.id);
+            break;
+          case 'DELETE_DISH':
+            await deleteDish(action.payload);
+            break;
+          case 'ADD_INVENTORY':
+            await addInventoryEvent(action.payload);
+            break;
+          case 'ADD_PRODUCTION':
+            await addProduction(action.payload);
+            break;
+        }
+        await syncQueueService.dequeue(action.id);
+      } catch (error) {
+        console.error('Sync error:', error);
+        await syncQueueService.incrementRetry(action.id);
+        // Break to avoid hammering if it's a network issue
+        break;
+      }
+    }
+  }
+}),
+{
+  name: 'escandallo-storage',
+  partialize: (state) => ({
+    ui: state.ui,
+    draftDishes: state.draftDishes
+  })
+}
+));

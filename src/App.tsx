@@ -73,8 +73,9 @@ export const calculateDishCost = (dish: any, selectedVariants: Record<string, nu
 };
 
 function App() {
-  const [activePage, setActivePage] = React.useState<string>('dashboard');
-  const { initSync, loading } = useAppStore();
+  const { initSync, loading, ui, setUI } = useAppStore();
+  const activePage = ui.activePage;
+  const setActivePage = (page: string) => setUI({ activePage: page });
 
   React.useEffect(() => {
     // Start real-time sync with Firestore
@@ -83,7 +84,7 @@ function App() {
   }, [initSync]);
 
   // Deep link: si la URL tiene #dish=<id>, navegar al escandallo directamente
-  const { dishes, setSelectedDish, setView } = useAppStore();
+  const { dishes, setSelectedDish } = useAppStore();
   React.useEffect(() => {
     if (!dishes.length) return;
     const hash = window.location.hash;
@@ -93,7 +94,7 @@ function App() {
     const dish = dishes.find(d => d.id === dishId);
     if (dish) {
       setSelectedDish(dish);
-      setView('result');
+      setUI({ view: 'result' });
       setActivePage('recipes');
       history.replaceState(null, '', window.location.pathname);
     }

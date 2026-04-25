@@ -8,7 +8,9 @@ import { computeStockProjection } from '../services/inventory.service';
 import { PDFViewer, PDFDownloadLink, pdf } from '@react-pdf/renderer';
 import RecipePDF from '../components/RecipePDF';
 import { mapRecipeToPDFModel, PDFModel } from '../services/pdfAdapter.service';
-import { X, ExternalLink, Eye, EyeOff, Printer, Loader2 } from 'lucide-react';
+import { X, ExternalLink, Eye, EyeOff, Printer, Loader2, Clock, AlertCircle } from 'lucide-react';
+import { useConnectivity } from '../hooks/useConnectivity';
+import { syncQueueService } from '../services/syncQueue.service';
 import { resolveIngredientCost } from '../services/pricing.service';
 import { getScaledDishBreakdown } from '../services/breakdown.service';
 
@@ -118,24 +120,34 @@ const MobilePDFFallback: React.FC<MobilePDFFallbackProps> = ({ document, fileNam
 };
 
 export const RecipesPage: React.FC = () => {
-  const activeTab = useAppStore(state => state.activeTab);
-  const setActiveTab = useAppStore(state => state.setActiveTab);
-  const view = useAppStore(state => state.view);
-  const setView = useAppStore(state => state.setView);
-  const dishes = useAppStore(state => state.dishes);
-  const selectedDish = useAppStore(state => state.selectedDish);
-  const setSelectedDish = useAppStore(state => state.setSelectedDish);
-  const setDishes = useAppStore(state => state.setDishes);
-  const addDish = useAppStore(state => state.addDish);
-  const updateDish = useAppStore(state => state.updateDish);
-  const deleteDish = useAppStore(state => state.deleteDish);
+  const {
+    ui, setUI, dishes, setDishes, selectedDish, setSelectedDish,
+    addDish, updateDish, deleteDish, catalog, setCatalog,
+    inventoryEvents, inventorySnapshots,
+    draftDishes, setDraftDish, removeDraftDish
+  } = useAppStore();
 
-  const inventoryEvents = useAppStore(state => state.inventoryEvents);
-  const inventorySnapshots = useAppStore(state => state.inventorySnapshots);
-  const catalog = useAppStore(state => state.catalog);
-  const setCatalog = useAppStore(state => state.setCatalog);
+  const activeTab = ui.activeTab;
+  const view = ui.view;
+  const setActiveTab = (tab: 'traditional' | 'custom') => setUI({ activeTab: tab });
+  const { isOnline } = useConnectivity();
+
   const latestSnapshot = inventorySnapshots.length > 0 ? inventorySnapshots[inventorySnapshots.length - 1] : null;
   const stockProjection = computeStockProjection(inventoryEvents, latestSnapshot);
+
+  // Merge real dishes with drafts
+  const allDishes = useMemo(() => {
+    const combined = [...dishes];
+    Object.values(draftDishes).forEach(draft => {
+      const idx = combined.findIndex(d => d.id === draft.id);
+      if (idx !== -1) {
+        combined[idx] = draft.data;
+      } else {
+        combined.push(draft.data);
+      }
+    });
+    return combined;
+  }, [dishes, draftDishes]);
   const [marginPercent, setMarginPercent] = useState<number>(43);
 
   const hasFloatingFooter = false; // TODO: activar cuando añadamos acciones sticky (Save/CTA)
@@ -267,7 +279,7 @@ export const RecipesPage: React.FC = () => {
   const handleCalculateTraditional = (dish: Dish) => {
     setSelectedDish(dish);
     setSelectedVariants({});
-    setView('result');
+    setUI({ view: 'result' });
   };
 
   const handleEditDish = (dish: Dish) => {
@@ -282,8 +294,7 @@ export const RecipesPage: React.FC = () => {
     setNotes(dish.notes || '');
     setDishAllergens(dish.allergens || {});
     setDishVersion(dish.version || '1.0.0');
-    setActiveTab('custom');
-    setView('selection');
+    setUI({ activeTab: 'custom', view: 'selection' });
   };
 
   const resetForm = () => {
@@ -302,7 +313,7 @@ export const RecipesPage: React.FC = () => {
     setDishVersion('1.0.0');
   };
 
-  const handleSaveAndCalculate = () => {
+  const handleSaveAndCalculate = async () => {
     if (!dishName.trim()) {
       alert('Por favor, introduce un nombre para el plato.');
       return;
@@ -331,15 +342,34 @@ export const RecipesPage: React.FC = () => {
       lastUpdated: new Date().toISOString()
     };
 
-    if (editingDishId) {
-      updateDish(newDish);
+    if (!isOnline) {
+      const draftId = editingDishId || `draft_${Date.now()}`;
+      newDish.id = draftId; // Ensure draft has ID
+
+      setDraftDish(draftId, {
+        id: draftId,
+        data: newDish,
+        updatedAt: Date.now(),
+        syncStatus: 'pending'
+      });
+
+      await syncQueueService.enqueue({
+        type: editingDishId ? 'UPDATE_DISH' : 'CREATE_DISH',
+        payload: newDish
+      });
+
+      alert('Escandallo guardado localmente (Offline). Se sincronizará al volver online.');
     } else {
-      addDish(newDish);
+      if (editingDishId) {
+        await updateDish(newDish);
+      } else {
+        await addDish(newDish);
+      }
     }
 
     setSelectedDish(newDish);
     setSelectedVariants({});
-    setView('result');
+    setUI({ view: 'result' });
   };
 
   const validateIngredientDraft = (): string | null => {
@@ -500,7 +530,7 @@ export const RecipesPage: React.FC = () => {
   };
 
   const resetView = () => {
-    setView('selection');
+    setUI({ view: 'selection' });
     setSelectedDish(null);
   };
 
@@ -582,7 +612,7 @@ export const RecipesPage: React.FC = () => {
               </span>
             </div>
 
-            <div className="py-4 mb-6 relative">
+            <div className="py-2 mb-6">
               <input
                 type="range"
                 min="0"
@@ -590,43 +620,8 @@ export const RecipesPage: React.FC = () => {
                 step="1"
                 value={marginPercent}
                 onChange={(e) => setMarginPercent(parseFloat(e.target.value))}
-                className="w-full h-2 rounded-full appearance-none cursor-pointer focus:outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all"
-                style={{
-                  background: `linear-gradient(to right, #06b6d4 ${(marginPercent / 99) * 100}%, #e2e8f0 ${(marginPercent / 99) * 100}%)`
-                }}
+                className="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#06b6d4]"
               />
-              <style>{`
-                input[type=range]::-webkit-slider-thumb {
-                  -webkit-appearance: none;
-                  appearance: none;
-                  width: 24px;
-                  height: 24px;
-                  background: white;
-                  border: 2.5px solid #06b6d4;
-                  border-radius: 50%;
-                  cursor: pointer;
-                  box-shadow: 0 2px 6px rgba(6, 182, 212, 0.25);
-                  transition: all 0.2s ease;
-                }
-                input[type=range]::-webkit-slider-thumb:hover {
-                  transform: scale(1.1);
-                  box-shadow: 0 4px 10px rgba(6, 182, 212, 0.35);
-                }
-                input[type=range]::-moz-range-thumb {
-                  width: 24px;
-                  height: 24px;
-                  background: white;
-                  border: 2.5px solid #06b6d4;
-                  border-radius: 50%;
-                  cursor: pointer;
-                  box-shadow: 0 2px 6px rgba(6, 182, 212, 0.25);
-                  transition: all 0.2s ease;
-                }
-                input[type=range]::-moz-range-thumb:hover {
-                  transform: scale(1.1);
-                  box-shadow: 0 4px 10px rgba(6, 182, 212, 0.35);
-                }
-              `}</style>
             </div>
 
             <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-slate-200">
@@ -911,6 +906,10 @@ export const RecipesPage: React.FC = () => {
         <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row gap-3 sm:gap-4">
           <button
             onClick={async () => {
+              if (!isOnline) {
+                alert('La exportación a PDF requiere conexión para procesar los activos de marca y asegurar la calidad del documento.');
+                return;
+              }
               setIsGeneratingPdf(true);
               try {
                 const model = await mapRecipeToPDFModel(selectedDish, catalog, selectedVariants, stockProjection);
@@ -924,7 +923,8 @@ export const RecipesPage: React.FC = () => {
               }
             }}
             disabled={isGeneratingPdf}
-            className="flex-1 bg-[#06b6d4] hover:bg-[#0891b2] active:scale-95 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            className={`flex-1 ${isOnline ? 'bg-[#06b6d4] hover:bg-[#0891b2]' : 'bg-slate-400 cursor-not-allowed'} active:scale-95 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50`}
+            title={!isOnline ? 'Conexión requerida para PDF' : ''}
           >
             {isGeneratingPdf ? (
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
@@ -1009,20 +1009,29 @@ export const RecipesPage: React.FC = () => {
           <div className="p-4 md:p-8 flex-1 overflow-y-auto">
             {activeTab === 'traditional' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {dishes.map((dish) => (
-                  <div
-                    key={dish.id}
-                    onClick={() => handleCalculateTraditional(dish)}
-                    className="group bg-white border border-slate-200 rounded-xl p-5 cursor-pointer hover:border-[#06b6d4] hover:shadow-md transition-all flex flex-col items-center text-center"
-                  >
-                    <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-50 transition-colors">
-                      <ChefHat className="text-slate-400 group-hover:text-[#06b6d4] transition-colors" size={24} />
+                {allDishes.map((dish) => {
+                  const isDraft = !!draftDishes[dish.id];
+                  return (
+                    <div
+                      key={dish.id}
+                      onClick={() => handleCalculateTraditional(dish)}
+                      className={`group bg-white border ${isDraft ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'} rounded-xl p-5 cursor-pointer hover:border-[#06b6d4] hover:shadow-md transition-all flex flex-col items-center text-center relative`}
+                    >
+                      {isDraft && (
+                        <div className="absolute top-3 right-3 text-amber-600 flex items-center gap-1" title="Pendiente de sincronizar">
+                          <Clock size={14} className="animate-pulse" />
+                          <span className="text-[10px] font-bold uppercase tracking-tight">Draft</span>
+                        </div>
+                      )}
+                      <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-50 transition-colors">
+                        <ChefHat className="text-slate-400 group-hover:text-[#06b6d4] transition-colors" size={24} />
+                      </div>
+                      <h3 className="font-bold text-slate-800 mb-1">{dish.name}</h3>
+                      <p className="text-sm text-slate-500">{dish.portions} raciones</p>
                     </div>
-                    <h3 className="font-bold text-slate-800 mb-1">{dish.name}</h3>
-                    <p className="text-sm text-slate-500">{dish.portions} raciones</p>
-                  </div>
-                ))}
-                {dishes.length === 0 && (
+                  );
+                })}
+                {allDishes.length === 0 && (
                   <div className="col-span-full text-center py-12 text-slate-500">
                     No hay platos guardados. Crea uno nuevo.
                   </div>
@@ -1141,8 +1150,8 @@ export const RecipesPage: React.FC = () => {
                           type="button"
                           onClick={() => setShowInventoryPicker(!showInventoryPicker)}
                           className={`text-xs font-medium px-2 py-1 rounded-md transition-all flex items-center gap-1.5 ${showInventoryPicker
-                              ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
-                              : 'bg-[#06b6d4]/10 text-[#06b6d4] hover:bg-[#06b6d4]/20'
+                            ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                            : 'bg-[#06b6d4]/10 text-[#06b6d4] hover:bg-[#06b6d4]/20'
                             }`}
                         >
                           {showInventoryPicker ? (
@@ -1268,8 +1277,8 @@ export const RecipesPage: React.FC = () => {
                               value={newPurchasePrice} onChange={e => setNewPurchasePrice(e.target.value)}
                               disabled={priceLocked}
                               className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#06b6d4] ${priceLocked
-                                  ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
-                                  : 'border-slate-300'
+                                ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
+                                : 'border-slate-300'
                                 }`}
                               placeholder="0.00"
                             />
@@ -1308,8 +1317,8 @@ export const RecipesPage: React.FC = () => {
                     <div className="mt-4 space-y-3 bg-slate-100 p-3 rounded-lg border border-slate-200">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label className={`relative inline-flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${isFromCatalog
-                            ? 'bg-white/80 border-slate-300 hover:border-[#06b6d4] cursor-pointer'
-                            : 'bg-slate-100/50 border-slate-200 cursor-not-allowed opacity-50'
+                          ? 'bg-white/80 border-slate-300 hover:border-[#06b6d4] cursor-pointer'
+                          : 'bg-slate-100/50 border-slate-200 cursor-not-allowed opacity-50'
                           }`}>
                           <span className="text-sm font-medium text-slate-700">Usar precio del inventario (WAC)</span>
                           <input
@@ -1329,8 +1338,8 @@ export const RecipesPage: React.FC = () => {
 
                         <label
                           className={`relative inline-flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${useInventoryPrice
-                              ? 'bg-white/80 border-slate-300 hover:border-[#06b6d4] cursor-pointer'
-                              : 'bg-slate-100/50 border-slate-200 cursor-not-allowed opacity-50'
+                            ? 'bg-white/80 border-slate-300 hover:border-[#06b6d4] cursor-pointer'
+                            : 'bg-slate-100/50 border-slate-200 cursor-not-allowed opacity-50'
                             }`}
                           title="Si está desactivado, este ingrediente no afectará el stock al producir."
                         >
@@ -1683,8 +1692,8 @@ export const RecipesPage: React.FC = () => {
                           if (variantGroupError) setVariantGroupError(false);
                         }}
                         className={`w-full border rounded-lg px-4 py-2 text-sm focus:ring-2 transition-all ${variantGroupError
-                            ? 'border-red-400 bg-red-50 ring-red-100 focus:ring-red-400 placeholder:text-red-400'
-                            : 'border-slate-300 focus:ring-[#06b6d4]'
+                          ? 'border-red-400 bg-red-50 ring-red-100 focus:ring-red-400 placeholder:text-red-400'
+                          : 'border-slate-300 focus:ring-[#06b6d4]'
                           }`}
                         placeholder={variantGroupError ? "Introduce un nombre para el grupo..." : "Nueva categoría de variante (ej. Tipo de Arroz)"}
                       />
@@ -1695,8 +1704,8 @@ export const RecipesPage: React.FC = () => {
                     <button
                       type="submit"
                       className={`h-fit px-4 py-2 rounded-lg text-sm font-medium transition-all ${variantGroupError
-                          ? 'bg-red-500 text-white shadow-lg shadow-red-200'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        ? 'bg-red-500 text-white shadow-lg shadow-red-200'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                         }`}
                     >
                       Añadir Grupo

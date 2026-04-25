@@ -107,10 +107,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           <h2 className="text-3xl font-serif font-bold text-slate-900">Control de Mando</h2>
           <p className="text-slate-500 mt-1 font-medium">Estado real de tu operativa y costes.</p>
         </div>
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-          <Activity size={14} className="text-cyan-500" />
-          Live Update
-        </div>
       </header>
 
       {/* SHORTCUTS NATIVOS (SOLO MÓVIL) - Optimizados para pulgar */}

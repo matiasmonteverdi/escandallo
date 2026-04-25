@@ -62,7 +62,7 @@ export const ConfigPage: React.FC = () => {
 
       <div className="flex flex-col gap-6">
         {/* Entorno de pruebas */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="card-base overflow-hidden">
           <div className="p-5 border-b border-slate-100 flex items-center gap-3">
             <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
               <FlaskConical size={20} />
@@ -93,7 +93,7 @@ export const ConfigPage: React.FC = () => {
         </div>
 
         {/* Borrar base de datos */}
-        <div className="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-red-200 shadow-sm transition-all duration-200 overflow-hidden">
           <div className="p-5 border-b border-red-100 bg-red-50 flex items-center gap-3">
             <div className="p-2 bg-red-100 rounded-lg text-red-600">
               <AlertTriangle size={20} />
