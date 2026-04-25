@@ -2,15 +2,12 @@ import { useState, useEffect } from 'react';
 
 export function usePWAInstall() {
   const [installPrompt, setInstallPrompt] = useState<any>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
 
   useEffect(() => {
     const handler = (e: any) => {
-      // Prevent Chrome 67 and earlier from automatically showing the prompt
       e.preventDefault();
-      // Stash the event so it can be triggered later.
+      console.log('[PWA] beforeinstallprompt captured');
       setInstallPrompt(e);
-      setIsInstallable(true);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
@@ -20,28 +17,39 @@ export function usePWAInstall() {
     };
   }, []);
 
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || (navigator as any).standalone === true;
+  const isAndroid = /Android/.test(navigator.userAgent);
+
   const handleInstall = async () => {
-    if (!installPrompt) return;
+    console.log('[PWA] Install button clicked, prompt:', installPrompt);
 
-    // Show the prompt
-    installPrompt.prompt();
-
-    // Wait for the user to respond to the prompt
-    const { outcome } = await installPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      console.log('User accepted the PWA install');
-    } else {
-      console.log('User dismissed the PWA install');
+    if (installPrompt) {
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      console.log('[PWA] User choice:', outcome);
+      setInstallPrompt(null);
+      return;
     }
 
-    // Clear the saved prompt since it can't be used again
-    setInstallPrompt(null);
-    setIsInstallable(false);
+    // Fallback: no prompt available (browser already showed it, or criteria not met)
+    if (isIOS) {
+      alert('Para instalar en iPhone/iPad:\n1. Pulsa el botón "Compartir" (cuadrado con flecha)\n2. Selecciona "Añadir a la pantalla de inicio"');
+      return;
+    }
+
+    if (isAndroid) {
+      alert('Para instalar:\n1. Abre el menú del navegador (⋮)\n2. Selecciona "Añadir a pantalla de inicio" o "Instalar aplicación"');
+      return;
+    }
+
+    // Desktop Chrome/Edge fallback
+    alert('Para instalar:\n1. Busca el icono de instalación (⊕) en la barra de direcciones\n2. O abre el menú del navegador y busca "Instalar"');
   };
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+  // Show button if not already installed as standalone
+  const isInstallable = !isStandalone;
 
-  return { isInstallable, handleInstall, isIOS, isStandalone };
+  return { isInstallable, handleInstall, isIOS, isAndroid, isStandalone, hasNativePrompt: !!installPrompt };
 }
